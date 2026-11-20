@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: snackflow
+      POSTGRES_USER: snackflow
+      POSTGRES_PASSWORD: snackflow_dev_password
+    volumes:
+      - snackflow_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U snackflow -d snackflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://snackflow:snackflow_dev_password@db:5432/snackflow
+      SECRET_KEY: change-me-before-deploying
+      ACCESS_TOKEN_MINUTES: 720
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+volumes:
+  snackflow_pgdata:

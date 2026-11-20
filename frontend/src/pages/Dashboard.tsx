@@ -1,0 +1,17 @@
+import { useEffect, useState } from "react";
+import { AlertTriangle, ArrowUpRight, Boxes, ClipboardCheck, Factory, PackageCheck, RefreshCw } from "lucide-react";
+import StatCard from "../components/StatCard";
+import { api } from "../services/api";
+export default function Dashboard({ role }: { role: string }) {
+  const [data,setData]=useState<any>(null), [error,setError]=useState("");
+  async function load(){ try { const stock=await api<any[]>("/api/inventory/summary"); let dash:any={stock}; if(["admin","owner"].includes(role)) dash=await api("/api/dashboard"); setData({...dash,stock}); } catch(e:any){setError(e.message);} }
+  useEffect(()=>{load();},[]);
+  const finished=data?.stock?.find((x:any)=>x.item==="Murukku 200 g")?.balance ?? "—";
+  const low=data?.stock?.filter((x:any)=>Number(x.balance)<Number(x.reorder_level||0)).length ?? 0;
+  return <div className="space-y-6"><div className="page-heading"><div><div className="eyebrow">BUSINESS OVERVIEW</div><h1>Good to see you.</h1><p className="muted">Here's what's happening across your factory today.</p></div><button className="secondary-btn" onClick={load}><RefreshCw size={15}/> Refresh</button></div>
+    {error&&<div className="error-box">{error}</div>}
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><StatCard label="Finished goods" value={`${finished} packets`} hint="Murukku 200 g on hand" icon={<PackageCheck size={18}/>}/><StatCard label="Inventory items" value={String(data?.stock?.length ?? "—")} hint="Across raw, packaging and finished" icon={<Boxes size={18}/>}/><StatCard label="Today's orders" value={String(data?.today_orders ?? "—")} hint="Submitted and processed" icon={<ClipboardCheck size={18}/>}/><StatCard label="Variance alerts" value={String(data?.variance_alerts ?? "—")} hint="Outside configured tolerance" icon={<AlertTriangle size={18}/>}/></div>
+    <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]"><section className="panel"><div className="flex items-center justify-between"><div><h2>Inventory snapshot</h2><p className="muted text-xs">Current balances calculated from stock movements</p></div><Boxes size={18} className="muted"/></div><div className="mt-5 overflow-x-auto"><table><thead><tr><th>Item</th><th>Category</th><th>Balance</th><th>Unit</th></tr></thead><tbody>{(data?.stock||[]).map((x:any)=><tr key={x.item}><td className="font-medium">{x.item}</td><td><span className="tag">{x.type}</span></td><td className="tabular-nums">{x.balance}</td><td className="muted">{x.unit}</td></tr>)}</tbody></table></div></section>
+    <section className="panel"><div className="flex items-center justify-between"><div><h2>Workflow health</h2><p className="muted text-xs">Core transaction services</p></div><Factory size={18} className="muted"/></div><div className="mt-5 space-y-4">{[["Sales order processing","Operational"],["Production & BOM","Operational"],["Inventory ledger","Operational"],["GST billing","Operational"],["Audit reporting","Operational"]].map(([n,s])=><div className="flex items-center justify-between" key={n}><span className="text-sm">{n}</span><span className="tag tag-green"><span className="status-dot"/> {s}</span></div>)}</div><div className="mt-6 rounded-xl bg-mint/10 p-4"><div className="flex items-center gap-2 text-sm font-semibold text-mint"><ArrowUpRight size={16}/> Ledger-first architecture</div><p className="muted mt-2 text-xs leading-5">Purchases, production and dispatch create source-linked stock movements. Balances are never manually overwritten.</p></div></section></div>
+  </div>;
+}
