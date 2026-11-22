@@ -1,1 +1,29 @@
-{"name":"SnackFlow ERP","short_name":"SnackFlow","start_url":"/","display":"standalone","background_color":"#101827","theme_color":"#101827","icons":[]}
+{
+  "name": "SnackFlow ERP",
+  "short_name": "SnackFlow",
+  "description": "Order-to-audit ERP for packaged-snacks manufacturing",
+  "start_url": "/#/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b1120",
+  "theme_color": "#101827",
+  "icons": [
+    {
+      "src": "/icons/icon-512.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Orders", "url": "/#/orders" },
+    { "name": "Inventory", "url": "/#/inventory" }
+  ]
+}

@@ -1,6 +1,7 @@
 from datetime import datetime, date
 from decimal import Decimal
-from sqlalchemy import String, Integer, Boolean, DateTime, Date, ForeignKey, Numeric, Text, UniqueConstraint, event
+from sqlalchemy import (String, Integer, Boolean, DateTime, Date, ForeignKey, Numeric, Text,
+                        UniqueConstraint, CheckConstraint, Index, event)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -22,6 +23,12 @@ class User(Base):
 
 class Item(Base):
     __tablename__ = "items"
+    __table_args__ = (
+        CheckConstraint("item_type IN ('raw','packaging','finished')", name="ck_items_item_type"),
+        CheckConstraint("base_unit IN ('g','ml','piece','packet')", name="ck_items_base_unit"),
+        CheckConstraint("conversion_factor > 0", name="ck_items_conversion_positive"),
+        CheckConstraint("reorder_level >= 0", name="ck_items_reorder_non_negative"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True)
     item_type: Mapped[str] = mapped_column(String(20))  # raw, packaging, finished
@@ -33,6 +40,11 @@ class Item(Base):
 
 class Product(Base):
     __tablename__ = "products"
+    __table_args__ = (
+        CheckConstraint("pack_size_g > 0", name="ck_products_pack_size_positive"),
+        CheckConstraint("selling_price >= 0", name="ck_products_price_non_negative"),
+        CheckConstraint("gst_rate >= 0 AND gst_rate <= 50", name="ck_products_gst_rate_range"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     item_id: Mapped[int] = mapped_column(ForeignKey("items.id"), unique=True)
     family: Mapped[str] = mapped_column(String(100))
@@ -43,6 +55,10 @@ class Product(Base):
 
 class Customer(Base):
     __tablename__ = "customers"
+    __table_args__ = (
+        CheckConstraint("customer_type IN ('retailer','distributor','wholesale')",
+                        name="ck_customers_type"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120))
     customer_type: Mapped[str] = mapped_column(String(30), default="retailer")
@@ -86,13 +102,21 @@ class Purchase(Base):
 class PurchaseItem(Base):
     __tablename__ = "purchase_items"
     id: Mapped[int] = mapped_column(primary_key=True)
-    purchase_id: Mapped[int] = mapped_column(ForeignKey("purchases.id"))
-    item_id: Mapped[int] = mapped_column(ForeignKey("items.id"))
+    purchase_id: Mapped[int] = mapped_column(ForeignKey("purchases.id"), index=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id"), index=True)
     quantity: Mapped[Decimal] = mapped_column(QTY)
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(14,4))
 
 class StockMovement(Base):
     __tablename__ = "stock_movements"
+    __table_args__ = (
+        CheckConstraint(
+            "movement_type IN ('opening','purchase','production_issue','production_output',"
+            "'production_overhead','dispatch','adjustment','purchase_return','sales_return')",
+            name="ck_stock_movements_type",
+        ),
+        Index("ix_stock_movements_item_chrono", "item_id", "created_at", "id"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     item_id: Mapped[int] = mapped_column(ForeignKey("items.id"), index=True)
     movement_type: Mapped[str] = mapped_column(String(30))
@@ -105,12 +129,13 @@ class StockMovement(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     batch_no: Mapped[str | None] = mapped_column(String(60), nullable=True)
     expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 class ProductionRun(Base):
     __tablename__ = "production_runs"
     id: Mapped[int] = mapped_column(primary_key=True)
     run_key: Mapped[str] = mapped_column(String(80), unique=True)
-    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id"))
     batch_count: Mapped[int] = mapped_column(Integer, default=1)
     expected_output: Mapped[int] = mapped_column(Integer)
@@ -126,7 +151,7 @@ class ProductionRun(Base):
 class MaterialIssue(Base):
     __tablename__ = "material_issues"
     id: Mapped[int] = mapped_column(primary_key=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("production_runs.id"))
+    run_id: Mapped[int] = mapped_column(ForeignKey("production_runs.id"), index=True)
     item_id: Mapped[int] = mapped_column(ForeignKey("items.id"))
     planned_quantity: Mapped[Decimal] = mapped_column(QTY)
     actual_quantity: Mapped[Decimal] = mapped_column(QTY)
@@ -135,17 +160,27 @@ class MaterialIssue(Base):
 
 class ProductionCost(Base):
     __tablename__ = "production_costs"
+    __table_args__ = (
+        CheckConstraint("category IN ('labour','gas_power','other')", name="ck_production_costs_category"),
+        CheckConstraint("amount > 0", name="ck_production_costs_amount_positive"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("production_runs.id"))
+    run_id: Mapped[int] = mapped_column(ForeignKey("production_runs.id"), index=True)
     category: Mapped[str] = mapped_column(String(40))
     amount: Mapped[Decimal] = mapped_column(MONEY)
 
 class Order(Base):
     __tablename__ = "orders"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('submitted','approved','rejected','invoiced','dispatched','cancelled','returned')",
+            name="ck_orders_status",
+        ),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
-    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
-    salesman_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    status: Mapped[str] = mapped_column(String(30), default="submitted")
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    salesman_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="submitted", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     client_request_id: Mapped[str | None] = mapped_column(String(80), unique=True, nullable=True, index=True)
@@ -153,7 +188,7 @@ class Order(Base):
 class OrderItem(Base):
     __tablename__ = "order_items"
     id: Mapped[int] = mapped_column(primary_key=True)
-    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"))
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
     quantity: Mapped[int] = mapped_column(Integer)
     unit_price: Mapped[Decimal] = mapped_column(MONEY)
@@ -166,6 +201,9 @@ class InvoiceSequence(Base):
 
 class Invoice(Base):
     __tablename__ = "invoices"
+    __table_args__ = (
+        CheckConstraint("gst_type IN ('CGST_SGST','IGST')", name="ck_invoices_gst_type"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), unique=True)
     invoice_number: Mapped[str] = mapped_column(String(40), unique=True)
@@ -182,7 +220,7 @@ class Invoice(Base):
 class InvoiceItem(Base):
     __tablename__ = "invoice_items"
     id: Mapped[int] = mapped_column(primary_key=True)
-    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"))
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
     quantity: Mapped[int] = mapped_column(Integer)
     unit_price: Mapped[Decimal] = mapped_column(MONEY)
@@ -191,10 +229,13 @@ class InvoiceItem(Base):
 class CreditNote(Base):
     __tablename__ = "credit_notes"
     id: Mapped[int] = mapped_column(primary_key=True)
-    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"))
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), index=True)
     note_number: Mapped[str] = mapped_column(String(40), unique=True)
     amount: Mapped[Decimal] = mapped_column(MONEY)
     reason: Mapped[str] = mapped_column(String(255))
+    # Reversal bookkeeping so the tax register and stock ledger stay in step.
+    stock_returned: Mapped[bool] = mapped_column(Boolean, default=False)
+    tax_reversed: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"))
 
 class Payment(Base):
     __tablename__ = "payments"
@@ -211,13 +252,34 @@ class PaymentAllocation(Base):
     invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"))
     amount: Mapped[Decimal] = mapped_column(MONEY)
 
+class SupplierPayment(Base):
+    """Accounts-payable side: money paid out against a supplier bill."""
+    __tablename__ = "supplier_payments"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_supplier_payments_amount_positive"),
+        CheckConstraint("method IN ('bank','upi','cash','cheque')", name="ck_supplier_payments_method"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), index=True)
+    purchase_id: Mapped[int | None] = mapped_column(ForeignKey("purchases.id"), nullable=True, index=True)
+    amount: Mapped[Decimal] = mapped_column(MONEY)
+    method: Mapped[str] = mapped_column(String(20), default="bank")
+    reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    paid_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("ix_audit_logs_entity", "entity_type", "entity_id"),
+        Index("ix_audit_logs_created", "created_at"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     entity_type: Mapped[str] = mapped_column(String(40))
     entity_id: Mapped[int] = mapped_column(Integer)
-    action: Mapped[str] = mapped_column(String(30))
+    action: Mapped[str] = mapped_column(String(30), index=True)
     before_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     after_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

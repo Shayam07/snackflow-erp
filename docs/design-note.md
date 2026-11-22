@@ -23,10 +23,14 @@ erDiagram
   INVOICES ||--o{ PAYMENT_ALLOCATIONS : settled_by
   PAYMENTS ||--o{ PAYMENT_ALLOCATIONS : allocates
   INVOICES ||--o{ CREDIT_NOTES : corrected_by
+  SUPPLIERS ||--o{ SUPPLIER_PAYMENTS : paid_by
+  PURCHASES ||--o{ SUPPLIER_PAYMENTS : settles
   USERS ||--o{ AUDIT_LOGS : records
 ```
 
-`items` is the inventory identity table. Its `item_type` is `raw`, `packaging` or `finished`; its base unit is `g`, `ml`, `piece` or `packet`. `products` adds product-family and pack-size attributes. Recipes are resolved by family, so multiple pack sizes can share a recipe.
+`items` is the inventory identity table. Its `item_type` is `raw`, `packaging` or `finished`; its base unit is `g`, `ml`, `piece` or `packet`. `products` adds product-family and pack-size attributes. Recipes are resolved by family, so multiple pack sizes can share a recipe. These enumerations, together with order status and GST type, are enforced by database `CHECK` constraints on PostgreSQL and on any schema created from the models.
+
+`supplier_payments` completes the payable side: a payment may be allocated to a purchase bill (over-payment rejected against the bill outstanding) or left on account. Payables are derived as `SUM(purchases.total) - SUM(supplier_payments.amount)` per supplier; no stored balance can drift.
 
 ## 2. Stock ledger and BOM calculation
 
@@ -44,4 +48,8 @@ Raw material cost uses moving weighted-average valuation by replaying the append
 
 ## 4. Transaction boundaries
 
-Purchase receipt, production posting, invoice creation, dispatch and payment allocation are transaction-scoped. Production runs use unique `run_key`; dispatch can only transition an invoiced order to dispatched. Invoice numbers are allocated from a financial-year sequence using a row lock on PostgreSQL. Posted invoices are retained; a credit note is a separate record. Audit events capture actor, action, before/after snapshots where available, and time.
+Purchase receipt, production posting, invoice creation, dispatch and payment allocation are transaction-scoped. Production runs use unique `run_key`; dispatch can only transition an invoiced order to dispatched. Invoice numbers are allocated from a financial-year sequence using a row lock on PostgreSQL, and `record_payment` re-reads the invoice under `FOR UPDATE` before checking the outstanding balance so two concurrent payments cannot both pass the check. Posted invoices are retained; a credit note is a separate record, and a full sales return restocks the dispatched lines at their original dispatch cost and records the reversed tax on the note. Audit events capture actor, action, before/after JSON snapshots where available, and time, and are readable through `/api/audit-logs`.
+
+## 5. Stock corrections
+
+Because `stock_movements` is append-only, a physical-count correction is a new signed `adjustment` movement carrying a mandatory note, valued at the current moving average for write-offs and at a supplied unit cost for write-ons. No balance is ever edited in place.

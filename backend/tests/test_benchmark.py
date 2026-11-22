@@ -97,7 +97,8 @@ def test_moving_average_replays_receipts_and_issues(db, seeded):
     db.flush()
     assert weighted_average_cost(db, flour.id) == Decimal("0.043125")
     # Issue 40 kg at the current moving average. The remaining rate is unchanged.
-    record_movement(db, item_id=flour.id, movement_type="issue", quantity=Decimal("-40000"),
+    record_movement(db, item_id=flour.id, movement_type="production_issue",
+                    quantity=Decimal("-40000"),
                     unit_cost=weighted_average_cost(db, flour.id), source_doc_type="test",
                     source_doc_id=2, created_by=seeded["admin"].id)
     db.flush()
@@ -327,7 +328,7 @@ def test_inventory_value_uses_signed_ledger_movements(db, seeded):
                     source_doc_type="test", source_doc_id=11,
                     created_by=seeded["admin"].id)
     db.flush()
-    record_movement(db, item_id=flour.id, movement_type="issue",
+    record_movement(db, item_id=flour.id, movement_type="production_issue",
                     quantity=Decimal("-500"), unit_cost=weighted_average_cost(db, flour.id),
                     source_doc_type="test", source_doc_id=12,
                     created_by=seeded["admin"].id)

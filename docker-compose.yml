@@ -20,6 +20,9 @@ services:
       DATABASE_URL: postgresql+psycopg://snackflow:snackflow_dev_password@db:5432/snackflow
       SECRET_KEY: change-me-before-deploying
       ACCESS_TOKEN_MINUTES: 720
+      APP_ENV: development
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     ports:
       - "8000:8000"
     depends_on:
@@ -31,6 +34,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         VITE_API_URL: http://localhost:8000
+    restart: unless-stopped
     ports:
       - "5173:80"
     depends_on:

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { CheckCircle2, FileText, Plus, Send, Save, Trash2, Truck } from "lucide-react";
+import { CheckCircle2, FileText, Plus, Send, Save, Trash2, Truck, DollarSign, Search, XCircle, RotateCcw } from "lucide-react";
 import { api, download } from "../services/api";
 import { enqueueOrder, syncQueuedOrders } from "../services/offlineQueue";
 
@@ -21,10 +21,12 @@ export default function Orders({ role }: { role: string }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [salesHistory, setSalesHistory] = useState<any[]>([]);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
   async function load() {
     const [orderRows, masterData] = await Promise.all([
-      api<OrderRow[]>("/api/orders"), api("/api/masters"),
+      api<OrderRow[]>("/api/orders"), api<any>("/api/masters"),
     ]);
     setOrders(orderRows);
     setMasters(masterData);
@@ -116,10 +118,15 @@ export default function Orders({ role }: { role: string }) {
   }
 
   async function action(id: number, actionName: string) {
+    if (actionName === "return" && !window.confirm(
+      "Return the entire order? Goods are restocked and a credit note is raised for the invoice."
+    )) return;
+    setError(""); setMessage("");
     try {
       const result = await api<any>(`/api/orders/${id}/${actionName}`, { method: "POST" });
       if (actionName === "invoice" && result.invoice_id) setLastInvoice(result);
       if (result.shortage) setMessage(`Insufficient stock: ${JSON.stringify(result.shortage)}`);
+      else if (actionName === "return") setMessage(`Order returned. Credit note ${result.credit_note} for ₹${result.amount}.`);
       else setMessage(actionName === "approve" && !result.approved ? "Approval was not completed." : `Order ${actionName} successful.`);
       await load();
     } catch (e: any) { setError(e.message); }
@@ -136,118 +143,320 @@ export default function Orders({ role }: { role: string }) {
           amount: paymentAmount, reference: "UI-PAYMENT",
         }),
       });
-      setMessage(`Payment recorded. Outstanding: ₹${result.outstanding}`);
+      setMessage(`Payment recorded. Outstanding balance: ₹${result.outstanding}`);
       setPaymentAmount("0");
     } catch (e: any) { setError(e.message); }
   }
 
+  // Calculate live preview totals for order form
+  const totalUnits = lines.reduce((acc, curr) => acc + (Number(curr.quantity) || 0), 0);
+  const estimatedAmount = lines.reduce((acc, curr) => {
+    const prod = masters?.products?.find((p: any) => String(p.id) === curr.product_id);
+    const price = Number(prod?.price || 0);
+    return acc + ((Number(curr.quantity) || 0) * price);
+  }, 0);
+
+  const filteredOrders = orders.filter((o) => {
+    const matchesStatus = statusFilter === "all" || o.status === statusFilter;
+    const matchesSearch = !search ||
+      o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
+      `so-${o.id}`.includes(search.toLowerCase());
+    return matchesStatus && matchesSearch;
+  });
+
   const lineEditor = (values: OrderLine[], edit = false) => (
     <div className="space-y-3">
-      {values.map((line, index) => (
-        <div className="grid items-end gap-2 sm:grid-cols-[1fr_110px_130px_38px]" key={`${edit ? "edit" : "new"}-${index}`}>
-          <label className="field-label">Product
-            <select className="field" value={line.product_id} onChange={(e) => updateLine(index, "product_id", e.target.value, edit)}>
-              {masters?.products?.map((product: any) => <option value={product.id} key={product.id}>{product.name} · ₹{product.price}</option>)}
-            </select>
-          </label>
-          <label className="field-label">Quantity
-            <input className="field" type="number" min="1" value={line.quantity} onChange={(e) => updateLine(index, "quantity", e.target.value, edit)} />
-          </label>
-          {edit && <label className="field-label">Unit price (₹)
-            <input className="field" type="number" min="0" step="0.01" value={line.unit_price || ""} onChange={(e) => updateLine(index, "unit_price", e.target.value, true)} />
-          </label>}
-          <button type="button" className="small-btn h-10" title="Remove line" disabled={values.length === 1}
-            onClick={() => (edit ? setEditLines : setLines)((current) => current.filter((_, i) => i !== index))}>
-            <Trash2 size={14}/>
-          </button>
-        </div>
-      ))}
-      <button type="button" className="small-btn" onClick={() => addLine(edit)}><Plus size={13}/> Add product line</button>
+      {values.map((line, index) => {
+        const prod = masters?.products?.find((p: any) => String(p.id) === line.product_id);
+        const lineTotal = (Number(line.quantity) || 0) * (edit && line.unit_price ? Number(line.unit_price) : Number(prod?.price || 0));
+
+        return (
+          <div className="grid items-end gap-2.5 sm:grid-cols-[1fr_110px_130px_100px_38px] p-2.5 rounded-xl bg-slate-900/50 border border-slate-800" key={`${edit ? "edit" : "new"}-${index}`}>
+            <label className="field-label">Product
+              <select className="field" value={line.product_id} onChange={(e) => updateLine(index, "product_id", e.target.value, edit)}>
+                {masters?.products?.map((product: any) => (
+                  <option value={product.id} key={product.id}>
+                    {product.name} · ₹{product.price}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-label">Quantity
+              <input className="field" type="number" min="1" value={line.quantity} onChange={(e) => updateLine(index, "quantity", e.target.value, edit)} />
+            </label>
+            {edit && (
+              <label className="field-label">Unit price (₹)
+                <input className="field" type="number" min="0" step="0.01" value={line.unit_price || ""} onChange={(e) => updateLine(index, "unit_price", e.target.value, true)} />
+              </label>
+            )}
+            <div className="pb-2">
+              <span className="text-[10px] uppercase font-semibold text-slate-500 block">Est. Total</span>
+              <span className="text-xs font-semibold text-emerald-400">₹{lineTotal.toFixed(2)}</span>
+            </div>
+            <button type="button" className="small-btn h-10 hover:!border-rose-500/40 hover:!text-rose-400" title="Remove line" disabled={values.length === 1}
+              onClick={() => (edit ? setEditLines : setLines)((current) => current.filter((_, i) => i !== index))}>
+              <Trash2 size={14}/>
+            </button>
+          </div>
+        );
+      })}
+      <button type="button" className="small-btn" onClick={() => addLine(edit)}>
+        <Plus size={13}/> Add Product Line
+      </button>
     </div>
   );
 
   return (
     <div className="space-y-6">
       <div className="page-heading">
-        <div><div className="eyebrow">SALES WORKSPACE</div><h1>Orders</h1>
-          <p className="muted">Capture multi-product orders and manage verification, invoicing and dispatch.</p>
+        <div>
+          <div className="eyebrow flex items-center gap-1.5">SALES WORKSPACE</div>
+          <h1>Sales Orders & Invoicing</h1>
+          <p className="muted">Capture multi-product retail orders, execute shortage checks, issue GST invoices and record payments.</p>
         </div>
       </div>
-      {message && <div className="notice">{message}</div>}
+
+      {message && <div className="notice"><CheckCircle2 size={16} /> {message}</div>}
       {error && <div className="error-box">{error}</div>}
 
       {["salesman", "admin"].includes(role) && (
         <form onSubmit={submitOrder} className="panel">
-          <div className="flex items-center gap-2"><Plus size={18}/><h2>New sales order</h2></div>
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              <Plus size={18} className="text-emerald-400" />
+              <h2>New Sales Order</h2>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-slate-400">Units: <strong className="text-slate-200">{totalUnits}</strong> pkts</span>
+              <span className="text-slate-400">Estimated Total: <strong className="text-emerald-400">₹{estimatedAmount.toFixed(2)}</strong></span>
+            </div>
+          </div>
+
           <div className="mt-4">
-            <label className="field-label">Customer
-              <select className="field max-w-lg" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
-                {masters?.customers?.map((customer: any) => <option value={customer.id} key={customer.id}>{customer.name} · {customer.state}</option>)}
+            <label className="field-label">Customer / Retailer
+              <select className="field max-w-md" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
+                {masters?.customers?.map((customer: any) => (
+                  <option value={customer.id} key={customer.id}>
+                    {customer.name} · {customer.state} ({customer.customer_type})
+                  </option>
+                ))}
               </select>
             </label>
           </div>
+
           <div className="mt-4">{lineEditor(lines)}</div>
-          <button className="primary-btn mt-4"><Send size={15}/> Submit order</button>
+
+          <div className="mt-5 flex items-center justify-between border-t border-slate-800/80 pt-4">
+            <div className="text-xs text-slate-400">
+              * Supports IndexedDB offline queue. Orders submitted offline auto-sync upon reconnection.
+            </div>
+            <button className="primary-btn">
+              <Send size={15}/> Submit Sales Order
+            </button>
+          </div>
         </form>
       )}
 
       {lastInvoice && (
-        <section className="panel">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h2>Invoice {lastInvoice.invoice_number}</h2>
-              <p className="muted mt-1 text-xs">Taxable ₹{lastInvoice.taxable} · Total ₹{lastInvoice.total}</p>
+        <section className="panel bg-gradient-to-br from-slate-900 to-slate-900/80 border-emerald-500/30">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+            <div>
+              <div className="eyebrow text-emerald-400">INVOICE GENERATED</div>
+              <h2 className="text-lg">Invoice {lastInvoice.invoice_number}</h2>
+              <p className="muted mt-0.5 text-xs">
+                Taxable: ₹{Number(lastInvoice.taxable).toFixed(2)} · CGST: ₹{Number(lastInvoice.cgst).toFixed(2)} · SGST: ₹{Number(lastInvoice.sgst).toFixed(2)} · Total: <span className="text-emerald-400 font-semibold">₹{Number(lastInvoice.total).toFixed(2)}</span>
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button className="small-btn" onClick={() => download(`/api/invoices/${lastInvoice.invoice_id}/pdf`, `${lastInvoice.invoice_number}.pdf`)}><FileText size={13}/> Download PDF</button>
-              <button className="small-btn" onClick={() => window.open(lastInvoice.whatsapp_share_url, "_blank", "noopener,noreferrer")}><Send size={13}/> WhatsApp share</button>
+              <button className="small-btn bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20" onClick={() => download(`/api/invoices/${lastInvoice.invoice_id}/pdf`, `${lastInvoice.invoice_number}.pdf`)}>
+                <FileText size={13}/> Download Official PDF
+              </button>
+              <button className="small-btn bg-green-500/10 text-green-400 border-green-500/30 hover:bg-green-500/20" onClick={() => window.open(lastInvoice.whatsapp_share_url, "_blank", "noopener,noreferrer")}>
+                <Send size={13}/> WhatsApp Share
+              </button>
             </div>
           </div>
+
           <form onSubmit={receivePayment} className="mt-4 flex flex-wrap items-end gap-3">
-            <label className="field-label">Record payment (₹)<input className="field" type="number" min="0.01" step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)}/></label>
-            <button className="primary-btn"><CheckCircle2 size={14}/> Record payment</button>
+            <label className="field-label">Collect Payment on Invoice (₹)
+              <input className="field" type="number" min="0.01" step="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} required />
+            </label>
+            <button className="primary-btn">
+              <DollarSign size={14}/> Record Payment
+            </button>
           </form>
         </section>
       )}
 
       <section className="panel">
-        <div className="flex items-center justify-between"><h2>Order register</h2><span className="tag">{orders.length} orders</span></div>
-        <div className="mt-4 overflow-x-auto">
-          <table><thead><tr><th>Order</th><th>Customer</th><th>Lines</th><th>Created</th><th>Status</th>{role === "admin" && <th>Actions</th>}</tr></thead>
-            <tbody>
-              {orders.map((order) => (
-                <tr key={order.id}>
-                  <td className="font-semibold">SO-{String(order.id).padStart(5, "0")}</td>
-                  <td>{order.customer_name}</td>
-                  <td>{order.lines.map((line) => `${line.product_name} × ${line.quantity} @ ₹${line.unit_price}`).join("; ")}</td>
-                  <td className="muted">{new Date(order.created_at).toLocaleString()}</td>
-                  <td><span className={`tag ${order.status === "dispatched" ? "tag-green" : ""}`}>{order.status}</span></td>
-                  {role === "admin" && <td><div className="flex flex-wrap gap-2">
-                    {order.status === "submitted" && <><button className="small-btn" onClick={() => beginEdit(order)}><Save size={13}/> Edit</button><button className="small-btn" onClick={() => action(order.id, "approve")}><CheckCircle2 size={13}/> Approve</button></>}
-                    {order.status === "approved" && <button className="small-btn" onClick={() => action(order.id, "invoice")}><FileText size={13}/> Invoice</button>}
-                    {order.status === "invoiced" && <button className="small-btn" onClick={() => action(order.id, "dispatch")}><Truck size={13}/> Dispatch</button>}
-                  </div></td>}
-                </tr>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <h2>Order Register</h2>
+            <span className="tag tag-green">{filteredOrders.length} orders</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-2.5 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Filter orders..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="field !mt-0 !py-1.5 !pl-8 !pr-2 text-xs w-40"
+              />
+            </div>
+            <div className="flex gap-1">
+              {["all", "submitted", "approved", "invoiced", "dispatched", "returned"].map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setStatusFilter(status)}
+                  className={`tab-btn !py-1 !px-2.5 text-xs capitalize ${statusFilter === status ? "selected" : ""}`}
+                >
+                  {status}
+                </button>
               ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Order ID</th>
+                <th>Customer</th>
+                <th>Lines & Quantities</th>
+                <th>Created</th>
+                <th>Workflow Status</th>
+                {role === "admin" && <th>Approval Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredOrders.map((order) => {
+                let statusBadge = "tag";
+                if (order.status === "dispatched") statusBadge = "tag tag-green";
+                else if (order.status === "invoiced") statusBadge = "tag tag-blue";
+                else if (order.status === "approved") statusBadge = "tag tag-purple";
+                else if (order.status === "submitted") statusBadge = "tag tag-amber";
+                else if (order.status === "returned") statusBadge = "tag tag-red";
+                else if (order.status === "cancelled" || order.status === "rejected") statusBadge = "tag";
+
+                return (
+                  <tr key={order.id}>
+                    <td className="font-semibold text-slate-100">SO-{String(order.id).padStart(5, "0")}</td>
+                    <td className="font-medium">{order.customer_name}</td>
+                    <td>{order.lines.map((line) => `${line.product_name} × ${line.quantity} @ ₹${line.unit_price}`).join("; ")}</td>
+                    <td className="muted text-xs">{new Date(order.created_at).toLocaleString()}</td>
+                    <td><span className={statusBadge}>{order.status}</span></td>
+                    {role === "admin" && (
+                      <td>
+                        <div className="flex flex-wrap gap-1.5">
+                          {order.status === "submitted" && (
+                            <>
+                              <button className="small-btn" onClick={() => beginEdit(order)} title="Edit lines and prices before approval">
+                                <Save size={12}/> Edit
+                              </button>
+                              <button className="small-btn bg-emerald-500/10 text-emerald-400 border-emerald-500/30" onClick={() => action(order.id, "approve")} title="Perform stock check and approve">
+                                <CheckCircle2 size={12}/> Approve
+                              </button>
+                              <button className="small-btn danger" onClick={() => action(order.id, "reject")} title="Reject this order">
+                                <XCircle size={12}/> Reject
+                              </button>
+                            </>
+                          )}
+                          {order.status === "approved" && (
+                            <button className="small-btn danger" onClick={() => action(order.id, "cancel")} title="Cancel before invoicing">
+                              <XCircle size={12}/> Cancel
+                            </button>
+                          )}
+                          {order.status === "approved" && (
+                            <button className="small-btn bg-blue-500/10 text-blue-400 border-blue-500/30" onClick={() => action(order.id, "invoice")}>
+                              <FileText size={12}/> Generate Invoice
+                            </button>
+                          )}
+                          {order.status === "invoiced" && (
+                            <button className="small-btn bg-purple-500/10 text-purple-400 border-purple-500/30" onClick={() => action(order.id, "dispatch")}>
+                              <Truck size={12}/> Post Dispatch
+                            </button>
+                          )}
+                          {order.status === "dispatched" && (
+                            <button className="small-btn bg-rose-500/10 text-rose-400 border-rose-500/30" onClick={() => action(order.id, "return")} title="Restock goods and raise a credit note">
+                              <RotateCcw size={12}/> Return
+                            </button>
+                          )}
+                          {["returned", "cancelled", "rejected"].includes(order.status) && (
+                            <span className="text-[11px] text-slate-500 italic">{order.status}</span>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-          {!orders.length && <div className="empty-state">No orders yet. Create the first order above.</div>}
+          {!filteredOrders.length && (
+            <div className="empty-state">No orders match the selected filter.</div>
+          )}
         </div>
       </section>
 
       {editingId !== null && (
-        <section className="panel">
-          <div className="flex items-center justify-between"><h2>Edit order SO-{String(editingId).padStart(5, "0")}</h2><button className="small-btn" onClick={() => setEditingId(null)}>Cancel</button></div>
-          <p className="muted mt-1 text-xs">Admin can change quantities, prices and product lines before approval. Changes are audit logged.</p>
-          <form onSubmit={saveEdit} className="mt-4">{lineEditor(editLines, true)}<button className="primary-btn mt-4"><Save size={14}/> Save verified order</button></form>
+        <section className="panel border-amber-500/30 bg-amber-950/10">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div>
+              <div className="eyebrow text-amber-400">ADMIN ORDER REVISION</div>
+              <h2>Edit Order SO-{String(editingId).padStart(5, "0")}</h2>
+            </div>
+            <button className="small-btn" onClick={() => setEditingId(null)}>Cancel</button>
+          </div>
+          <p className="muted mt-2 text-xs">
+            Admin can override quantities, unit prices, or product lines before formal approval. Every edit produces an immutable Audit Log entry.
+          </p>
+          <form onSubmit={saveEdit} className="mt-4">
+            {lineEditor(editLines, true)}
+            <button className="primary-btn mt-4">
+              <Save size={14}/> Save & Commit Order Revision
+            </button>
+          </form>
         </section>
       )}
 
       {role === "salesman" && (
         <section className="panel">
-          <div className="flex items-center justify-between"><h2>My customer sales</h2><span className="tag">Assigned orders only</span></div>
-          <div className="mt-4 overflow-x-auto"><table><thead><tr><th>Customer</th><th>Product</th><th>Quantity</th><th>Unit price</th><th>Status</th></tr></thead>
-            <tbody>{salesHistory.map((row, index) => <tr key={index}><td>{row.customer}</td><td>{row.product}</td><td>{row.quantity}</td><td>₹{row.unit_price}</td><td><span className="tag">{row.status}</span></td></tr>)}</tbody>
-          </table>{!salesHistory.length && <div className="empty-state">Your sales history will appear here.</div>}</div>
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div>
+              <h2>My Sales Territory History</h2>
+              <p className="muted text-xs">Direct sales performance for your assigned retail accounts</p>
+            </div>
+            <span className="tag tag-green">Assigned orders only</span>
+          </div>
+          <div className="mt-4 overflow-x-auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Product</th>
+                  <th>Quantity</th>
+                  <th>Unit price</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesHistory.map((row, index) => (
+                  <tr key={index}>
+                    <td className="font-semibold">{row.customer}</td>
+                    <td>{row.product}</td>
+                    <td className="tabular-nums">{row.quantity}</td>
+                    <td className="tabular-nums">₹{row.unit_price}</td>
+                    <td><span className="tag">{row.status}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!salesHistory.length && <div className="empty-state">No past customer sales found for this account.</div>}
+          </div>
         </section>
       )}
     </div>

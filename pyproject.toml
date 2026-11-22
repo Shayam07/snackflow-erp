@@ -1,0 +1,29 @@
+[tool.pytest.ini_options]
+# Makes `pytest` work from backend/ without exporting PYTHONPATH by hand.
+testpaths = ["backend/tests"]
+pythonpath = ["backend", "."]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+markers = [
+    "postgres: requires TEST_POSTGRES_URL and a live PostgreSQL service",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+exclude = ["venv", ".venv", "alembic/versions", "node_modules"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "C4", "SIM"]
+ignore = [
+    "E501",  # long lines are handled by the formatter
+    "B008",  # FastAPI Depends() in default arguments is idiomatic
+    "SIM108",  # ternaries are not always clearer
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "database", "scripts"]
+
+[tool.ruff.format]
+quote-style = "double"

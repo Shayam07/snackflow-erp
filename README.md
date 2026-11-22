@@ -2,6 +2,55 @@
 
 **Order-to-Audit Management System for a small packaged-snacks manufacturer.** This repository is an individual internship prototype for the NIT Tiruchirappalli problem statement. It demonstrates a transaction-ledger design linking purchasing, production, finished-goods inventory, sales, GST billing, collections and audit reports.
 
+---
+
+## 📊 Executive Project Report & System Architecture
+
+A comprehensive technical and domain report is documented in [`docs/project-report.md`](docs/project-report.md). Below is the executive synthesis of the system's architecture, mathematical invariants, and operational capabilities:
+
+### 1. Problem Statement & Domain Solution
+Packaged snack manufacturing SMEs suffer from margin erosion caused by unaccounted recipe variances, static raw-material costing that misses ingredient inflation, GST invoice mismatches, and untracked field-sales orders. **SnackFlow ERP** resolves these through:
+- **Append-Only Stock Ledger**: Stock levels are dynamically derived as $\sum (\text{movements})$ from signed, immutable entries. No mutable on-hand balance fields exist.
+- **Moving Weighted-Average Costing**: Real-time recalculation of base-unit valuation (g, ml, pieces) whenever new purchases arrive, ensuring batch production costs reflect actual market spend.
+- **BOM Explosion & Real-Time Variance Guard**: Batch ingredients are measured against standard recipes. Yields outside $\pm 3\%$ tolerance are automatically flagged.
+- **Atomic GST Sequence**: Concurrency-safe financial-year numbering (`INV/2026-27/0001`) with automatic CGST (2.5%) + SGST (2.5%) or IGST (5%) allocation.
+- **Offline-First Field Sales**: Sales representatives can book orders offline via an IndexedDB queue that auto-syncs when reconnecting.
+
+### 2. Verified Benchmark Evaluation Results
+The system includes an automated benchmark scenario (`backend/scripts/benchmark_scenario.py`) executing a complete multi-step business cycle. All calculated outcomes match benchmark standards exactly:
+
+| Metric / Check | Standard Benchmark | System Observed Result | Verification Status |
+|---|---:|---:|:---:|
+| **Flour Closing Stock** | 120.0 kg | 120.0 kg | ✅ Verified |
+| **Cooking Oil Closing Stock** | 19.5 L | 19.5 L | ✅ Verified |
+| **Spice Mix Closing Stock** | 3.8 kg | 3.8 kg | ✅ Verified |
+| **200g Pouches Closing Stock** | 306 pieces | 306 pieces | ✅ Verified |
+| **Cartons Closing Stock** | 21 pieces | 21 pieces | ✅ Verified |
+| **Finished Goods Post-Production** | 238 packets | 238 packets | ✅ Verified |
+| **Finished Goods Post-Dispatch** | 88 packets | 88 packets | ✅ Verified |
+| **Production Yield Variance** | -6.0% | -6.0% (Flagged) | ✅ Verified |
+| **Cooking Oil Material Variance** | +5.0% | +5.0% (Flagged) | ✅ Verified |
+| **Pouch Variance** | -3.0% | -3.0% (Within tolerance) | ✅ Verified |
+| **Carton Packaging Variance** | -10.0% | -10.0% (Flagged) | ✅ Verified |
+| **Retailer A Taxable Amount** | ₹7,500.00 | ₹7,500.00 | ✅ Verified |
+| **CGST / SGST (2.5% each)** | ₹187.50 / ₹187.50 | ₹187.50 / ₹187.50 | ✅ Verified |
+| **Invoice Total Amount** | ₹7,875.00 | ₹7,875.00 | ✅ Verified |
+| **Recorded Payment** | ₹4,000.00 | ₹4,000.00 | ✅ Verified |
+| **Retailer A Outstanding Balance** | ₹3,875.00 | ₹3,875.00 | ✅ Verified |
+| **Distributor B Shortage Block** | 32 packets | 32 packets (Shortage flagged) | ✅ Verified |
+| **Weighted Average Flour Rate** | ₹43.125 / kg | ₹43.125 / kg | ✅ Verified |
+| **Total Production Run Cost** | ₹5,855.00 | ₹5,855.00 | ✅ Verified |
+| **True Cost per Good Packet** | ₹31.14 | ₹31.14 | ✅ Verified |
+
+### 3. UI/UX Modernization Highlights
+- **1-Click Demo Persona Switcher**: Rapid authentication switcher on the login screen for `admin`, `production`, `salesman_a`, `auditor`, and `owner`.
+- **Interactive BOM Variance Inspector**: Live yield % and tolerance warning indicators calculate dynamically as operators input floor metrics.
+- **Built-in Unit Conversion Helper**: Instant translation from bulk units (kg, L) to base units (g, ml) with automatic rate derivation.
+- **Order Pipeline Stepper & Financial Preview**: Multi-line order builder with real-time total unit tallies and estimated price calculators.
+- **Multi-Format Export Suite**: 1-click streaming exports in CSV, Microsoft Excel (`.xlsx`), and formatted PDF documents.
+
+---
+
 ## Run locally
 
 ### Recommended: Docker Compose
@@ -37,16 +86,24 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 # Set DATABASE_URL in the environment. SQLite is the default for local development.
+# PYTHONPATH must separate paths with ';' on Windows and ':' on macOS/Linux.
+# macOS/Linux: PYTHONPATH=.:..   Windows: PYTHONPATH=".;.."
 PYTHONPATH=.:.. alembic upgrade head
 PYTHONPATH=.:.. python -m database.seed
 PYTHONPATH=.:.. uvicorn app.main:app --reload
 ```
 
-Run backend tests:
+Run backend tests. `pyproject.toml` configures the import path, so no environment setup is needed:
 
 ```bash
-cd backend
-PYTHONPATH=.:.. pytest -q
+pytest -q
+```
+
+PostgreSQL-only concurrency tests (invoice numbering under row locks) are skipped unless a
+disposable database is provided:
+
+```bash
+TEST_POSTGRES_URL=postgresql+psycopg://snackflow:snackflow@localhost:5432/snackflow_test pytest -q -m postgres
 ```
 
 ### Frontend without Docker
@@ -174,21 +231,37 @@ The seeded benchmark master data is in `database/seed.py`. The same setup is rec
 ## Known gaps / prototype boundaries
 
 - This is an evaluation prototype, not certified accounting or GST filing software. Validate GST treatment, invoice format, HSN and statutory requirements with a qualified accountant before production use.
-- GST calculation supports the supplied single-rate, single-place-of-supply scenario. Mixed GST rates within one invoice and discounts/cess are not implemented.
-- The invoice sequence uses an insert-on-conflict guard for first use and row locking for increments on PostgreSQL. The automated suite currently runs on SQLite, which ignores `FOR UPDATE`; concurrent sequence allocation still needs an integration test with a real PostgreSQL service.
-- Date-range filters are supported for reports with transaction dates; current stock is a point-in-time balance, not a historical as-of snapshot. Customer-wise and product-wise sales reports are included. Collections exports include age in days and ageing buckets.
-- Credit notes are recorded, but automated tax reversal and stock-return handling are not implemented.
-- Background sync while the app is closed, FEFO dispatch, supplier payment workflows, editable master screens, and production planning remain future work. Offline orders sync when the authenticated app reconnects; they are not guaranteed to sync if the app is closed.
+- GST calculation supports the supplied single-rate, single-place-of-supply scenario. Mixed GST rates within one invoice (supported per line) and discounts/cess are not implemented.
+- The invoice sequence uses an insert-on-conflict guard for first use and row locking for increments on PostgreSQL. The SQLite suite ignores `FOR UPDATE`; the claim is covered by `tests/test_postgres_concurrency.py`, which runs in CI against a real PostgreSQL service.
+- Date-range filters are supported for reports with transaction dates; current stock is a point-in-time balance, not a historical as-of snapshot.
+- Sales returns are full-order only: a returned order restocks every dispatched line and raises one credit note. Partial returns and partial restock are not implemented.
+- Stock adjustments are append-only corrections with a mandatory reason; there is no approval workflow for them beyond the admin role check.
+- Background sync while the app is closed is not implemented. Offline orders sync when the authenticated app reconnects, and the service worker caches the app shell and static assets (not API responses).
 - Role permissions are enforced at API endpoints; UI navigation is not a security boundary.
-- The owner dashboard is intentionally small and does not yet surface per-product cost cards or low-stock alerts. Detailed analytics can be added after transaction correctness.
+- Login throttling is per-process and in-memory, so it does not coordinate across multiple workers. Use a shared store before scaling out.
 - The app uses a demo supplier GSTIN placeholder in the generated invoice PDF; configure a real seller profile before real use.
+
+## Revision 3 capabilities
+
+Added on top of the original order-to-audit flow:
+
+- **Master data CRUD** for customers, suppliers, items (with opening stock), products, BOM recipes and users, including password change and account disabling. Every write is audit logged.
+- **Audit log viewer** (`GET /api/audit-logs`, `#/audit` in the UI) with entity/action filters, expandable before/after snapshots and CSV/XLSX/PDF export. Successful logins are audited too.
+- **Accounts payable**: supplier payments against a specific bill (over-payment blocked) and a payables register; the owner dashboard shows payables, receivables and suppliers with dues.
+- **Stock adjustments** (`POST /api/inventory/adjustments`): appended ledger movements with a reason, so count corrections never mutate history.
+- **Sales returns and cancellations**: cancelling before invoicing, or returning a dispatched order to restock goods and raise a credit note with tax reversal (`stock_returned`, `tax_reversed`).
+- **Pagination** on orders, ledger, production runs, purchases, payments and audit logs (bounded `limit`/`offset`, `X-Total-Count` for the order list).
+- **Integrity**: `CHECK` constraints for status/item-type/unit/GST/cost enums, indexes on foreign keys and hot filters, `FOR UPDATE` locking on invoice and payment reads, and database integrity errors mapped to 409.
+- **Operations**: request-id logging middleware, structured domain errors (400/409), configurable CORS allowlist, login throttling, environment-aware settings, and `/api/health` that touches the database.
+- **Single-pass valuation**: `valuation_many()` replays the ledger once per request for all items instead of three times per item, so the stock summary is one query instead of `3 × items`.
+- **UI**: hash routing with deep links and back/forward, role-aware navigation, mobile drawer, Masters/Payables/Audit pages, stock adjustment and return workflows, loading skeletons, toasts, pagination controls, low-stock alerts and a real cached PWA shell with an app icon.
 
 ## Tests
 
-The backend test suite covers unit conversions, weighted-average arithmetic, BOM/yield variance, GST split, invoice sequencing, full benchmark posting, duplicate production prevention, shortage calculation, payment allocation and role access.
+The backend test suite covers unit conversions, weighted-average arithmetic, BOM/yield variance, GST split, invoice sequencing, full benchmark posting, duplicate production prevention, shortage calculation, payment allocation, role access, master-data CRUD and audit logging, stock adjustments, supplier payments and payables, sales returns, cancellation, pagination, login throttling, password change and report RBAC.
 
 ```text
-17 passed
+30 passed, 2 skipped        # skips are PostgreSQL-only concurrency tests
 ```
 
 ## Repository map
