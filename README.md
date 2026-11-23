@@ -4,6 +4,23 @@
 
 ---
 
+## 🚀 Live Demo
+
+Try the running application without installing anything:
+
+| Service | URL |
+|---|---|
+| **Web application** (React + Vite on Vercel) | https://snackflow-erp.vercel.app |
+| **REST API** (FastAPI on Render) | https://snackflow-erp.onrender.com |
+| **API documentation** (Swagger UI) | https://snackflow-erp.onrender.com/docs |
+| **Health check** | https://snackflow-erp.onrender.com/api/health |
+
+Sign in at the web application with **`admin` / `admin123`** for full operational access, or use the one-click role switcher on the login screen to explore the production floor, field sales, auditor and owner views (all accounts are listed under [Demo logins](#demo-logins)).
+
+The backend runs on a free Render instance, so the first request after a period of inactivity may take up to a minute while the service wakes up; subsequent requests are immediate.
+
+---
+
 ## 📊 Executive Project Report & System Architecture
 
 A comprehensive technical and domain report is documented in [`docs/project-report.md`](docs/project-report.md). Below is the executive synthesis of the system's architecture, mathematical invariants, and operational capabilities:
@@ -131,7 +148,7 @@ The backend uses FastAPI, SQLAlchemy 2.0, Alembic and PostgreSQL because typed A
 | Auditor (read-only reports) | `auditor` | `audit123` |
 | Owner | `owner` | `owner123` |
 
-These are demonstration credentials only. Change them and `SECRET_KEY` before any public deployment.
+These are demonstration credentials for the seeded demo data; the live demo described above runs with them. Rotate them and `SECRET_KEY` before using this prototype with real business data.
 
 ## Benchmark demo
 
