@@ -59,6 +59,9 @@ export default function Orders({ role }: { role: string }) {
   const [paymentRef, setPaymentRef] = useState("");
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
+  // Invoice balances per order, used to gate the Collect action
+  const [invoicesByOrder, setInvoicesByOrder] = useState<Record<number, any>>({});
+
   // Shortage modal feedback
   const [shortageReport, setShortageReport] = useState<{ orderId: number; items: Record<string, string> } | null>(null);
 
@@ -77,6 +80,15 @@ export default function Orders({ role }: { role: string }) {
       ]);
       setOrders(orderRows);
       setMasters(masterData);
+
+      if (role === "admin") {
+        try {
+          const invoiceRows = await api<any[]>("/api/invoices");
+          setInvoicesByOrder(Object.fromEntries(invoiceRows.map((row) => [row.order_id, row])));
+        } catch {
+          setInvoicesByOrder({});
+        }
+      }
 
       if (!customerId && masterData.customers?.length) {
         setCustomerId(String(masterData.customers[0].id));
@@ -301,10 +313,12 @@ export default function Orders({ role }: { role: string }) {
 
     setSubmittingPayment(true);
     try {
-      const invoiceData = await api<any[]>("/api/invoices");
-      const inv = invoiceData.find((r) => r.order_id === paymentModalOrder.id);
+      const inv = invoicesByOrder[paymentModalOrder.id];
       if (!inv) throw new Error("No tax invoice found for this order yet");
       const invoiceId = inv.id;
+      if (Number(inv.outstanding) <= 0) {
+        throw new Error(`${inv.invoice_number} is already fully settled`);
+      }
 
       await api("/api/payments", {
         method: "POST",
@@ -766,16 +780,31 @@ export default function Orders({ role }: { role: string }) {
                                 >
                                   <RotateCcw size={12} /> Return
                                 </button>
-                                <button
-                                  onClick={() => {
-                                    setPaymentModalOrder(order);
-                                    setPaymentAmount(String(approxTotal));
-                                  }}
-                                  className="secondary-btn !py-1 text-xs !bg-[#21865B]/10 !text-[#21865B] !border-[#21865B]/30"
-                                  title="Record customer payment collection"
-                                >
-                                  <DollarSign size={12} /> Collect
-                                </button>
+                                {(() => {
+                                  const invoice = invoicesByOrder[order.id];
+                                  const due = invoice ? Number(invoice.outstanding) : null;
+                                  if (due !== null && due <= 0) {
+                                    return (
+                                      <span className="text-[11px] font-semibold text-[#21865B] px-1">
+                                        Settled
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <button
+                                      onClick={() => {
+                                        setPaymentModalOrder(order);
+                                        setPaymentAmount(String(due ?? approxTotal));
+                                      }}
+                                      className="secondary-btn !py-1 text-xs !bg-[#21865B]/10 !text-[#21865B] !border-[#21865B]/30"
+                                      title={invoice
+                                        ? `Record a receipt against ${invoice.invoice_number} (due ₹${due?.toFixed(2)})`
+                                        : "Record customer payment collection"}
+                                    >
+                                      <DollarSign size={12} /> Collect
+                                    </button>
+                                  );
+                                })()}
                               </>
                             )}
                           </div>
