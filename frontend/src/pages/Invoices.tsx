@@ -70,6 +70,14 @@ export default function Invoices({ role }: { role: string }) {
     void loadInvoices();
   }, []);
 
+  async function downloadPdf(inv: InvoiceRow) {
+    try {
+      await download(`/api/invoices/${inv.id}/pdf`, `${inv.invoice_number}.pdf`);
+    } catch (err: any) {
+      toast.error(err?.message || "Could not download the invoice PDF");
+    }
+  }
+
   // Summary Metrics
   const summary = useMemo(() => {
     let totalTaxable = 0;
@@ -353,7 +361,7 @@ export default function Invoices({ role }: { role: string }) {
                       <td className="text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => download(`/api/invoices/${inv.id}/pdf`, `${inv.invoice_number}.pdf`)}
+                            onClick={() => void downloadPdf(inv)}
                             className="secondary-btn !py-1 text-xs"
                             title="Download official PDF invoice"
                           >

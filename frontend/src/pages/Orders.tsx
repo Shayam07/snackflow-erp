@@ -287,6 +287,14 @@ export default function Orders({ role }: { role: string }) {
     }
   }
 
+  async function downloadInvoicePdf(invoice: any) {
+    try {
+      await download(`/api/invoices/${invoice.invoice_id}/pdf`, `${invoice.invoice_number}.pdf`);
+    } catch (err: any) {
+      toast.error(err?.message || "Could not download the invoice PDF");
+    }
+  }
+
   async function submitPayment(e: FormEvent) {
     e.preventDefault();
     if (!paymentModalOrder || !paymentAmount) return;
@@ -569,7 +577,7 @@ export default function Orders({ role }: { role: string }) {
 
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => download(`/api/invoices/${lastInvoice.invoice_id}/pdf`, `${lastInvoice.invoice_number}.pdf`)}
+              onClick={() => void downloadInvoicePdf(lastInvoice)}
               className="secondary-btn !py-1 text-xs"
             >
               <FileDown size={14} /> Download PDF
