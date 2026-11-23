@@ -207,14 +207,15 @@ The seeded benchmark master data is in `database/seed.py`. The same setup is rec
 ### Stretch
 
 - [x] PWA manifest and basic app-shell service worker.
-- [x] Batch number and expiry fields on stock movements.
+- [x] Reorder-level low-stock alerts: items carry `reorder_level`, the stock summary returns `below_reorder`, and the Dashboard and Inventory views highlight the affected items.
+- [ ] Batch number and expiry tracking. The `stock_movements` table has nullable `batch_no` and `expiry` columns and `record_movement()` accepts them, but no API endpoint or UI path sets them yet, so they are always null in practice.
 - [x] IndexedDB offline order queue with reconnect sync and client-request idempotency key.
 - [x] Admin can edit submitted order lines and prices before approval; changes are audit logged.
 - [x] Multi-line sales orders and per-line GST rate calculation.
 - [x] Salesman-only customer/product sales history endpoint and view.
 - [ ] Service-worker background sync while the app is closed.
-- [ ] FEFO dispatch and expiry dashboard.
-- [ ] Reorder alerts and production planning.
+- [ ] FEFO dispatch and an expiry dashboard.
+- [ ] Production planning and replenishment suggestions (low-stock alerts exist, but nothing proposes purchase or production quantities).
 - [ ] Tally-compatible export and e-Invoice / e-Way Bill integration.
 
 ## Design and integrity decisions
@@ -237,6 +238,7 @@ The seeded benchmark master data is in `database/seed.py`. The same setup is rec
 - Sales returns are full-order only: a returned order restocks every dispatched line and raises one credit note. Partial returns and partial restock are not implemented.
 - Stock adjustments are append-only corrections with a mandatory reason; there is no approval workflow for them beyond the admin role check.
 - Background sync while the app is closed is not implemented. Offline orders sync when the authenticated app reconnects, and the service worker caches the app shell and static assets (not API responses).
+- Batch numbers and expiry dates are schema-only: the columns and the `record_movement()` parameters exist, but no purchase, production or adjustment endpoint populates them, so FEFO and expiry reporting cannot be built on the current data.
 - Role permissions are enforced at API endpoints; UI navigation is not a security boundary.
 - Login throttling is per-process and in-memory, so it does not coordinate across multiple workers. Use a shared store before scaling out.
 - The app uses a demo supplier GSTIN placeholder in the generated invoice PDF; configure a real seller profile before real use.
@@ -254,7 +256,14 @@ Added on top of the original order-to-audit flow:
 - **Integrity**: `CHECK` constraints for status/item-type/unit/GST/cost enums, indexes on foreign keys and hot filters, `FOR UPDATE` locking on invoice and payment reads, and database integrity errors mapped to 409.
 - **Operations**: request-id logging middleware, structured domain errors (400/409), configurable CORS allowlist, login throttling, environment-aware settings, and `/api/health` that touches the database.
 - **Single-pass valuation**: `valuation_many()` replays the ledger once per request for all items instead of three times per item, so the stock summary is one query instead of `3 × items`.
-- **UI**: hash routing with deep links and back/forward, role-aware navigation, mobile drawer, Masters/Payables/Audit pages, stock adjustment and return workflows, loading skeletons, toasts, pagination controls, low-stock alerts and a real cached PWA shell with an app icon.
+- **UI**: hash routing with deep links and back/forward, role-aware navigation, mobile drawer, Masters/Audit pages, stock adjustment and return workflows, loading skeletons, toasts, pagination controls, low-stock alerts and a real cached PWA shell with an app icon.
+
+## Revision 4 capabilities
+
+- **Dedicated workflow pages**: the single "Payables" screen was replaced by **Purchases** (supplier bills, payables register and supplier payments as tabs), and invoice, payment and user-administration work moved out of the order screen into **Invoices**, **Payments** and **User Management** pages. Nav entries are role-gated per page.
+- **Light operations theme**: the dark UI was replaced with a navy/teal light theme (white panels, industrial table styling, KPI cards), a collapsible sidebar whose state persists in `localStorage` (`snackflow_sidebar_collapsed`), and a mobile drawer with a scrim.
+- **Paged-list fixes**: the Dashboard and Production pages read production runs from the paged `{items, total, limit, offset}` response instead of treating it as an array.
+- **Form spacing fix**: `.field` is declared after Tailwind's utilities, so its shorthand padding overrode the `pl-9` utility and leading input icons overlapped the text. A `.field.pl-9 { padding-left: 2.25rem; }` rule restores the offset on the login form and every search/filter input.
 
 ## Tests
 

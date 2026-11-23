@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import { NAV } from "../lib/nav";
 
-const PAGES = ["dashboard", "orders", "inventory", "production", "masters", "payables", "reports", "audit"];
+const VALID_PAGES = new Set([...NAV.map((n) => n.key), "payables"]);
 
 function readPage(): string {
   const raw = window.location.hash.replace(/^#\/?/, "").split("?")[0];
-  return PAGES.includes(raw) ? raw : "dashboard";
+  return VALID_PAGES.has(raw) ? raw : "dashboard";
 }
 
 /** Small hash router: deep links, refresh persistence and browser back/forward. */

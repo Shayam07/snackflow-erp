@@ -5,9 +5,12 @@ import Dashboard from "./pages/Dashboard";
 import Orders from "./pages/Orders";
 import Inventory from "./pages/Inventory";
 import Production from "./pages/Production";
+import Purchases from "./pages/Purchases";
+import Invoices from "./pages/Invoices";
+import Payments from "./pages/Payments";
+import Users from "./pages/Users";
 import Reports from "./pages/Reports";
 import Masters from "./pages/Masters";
-import Payables from "./pages/Payables";
 import Audit from "./pages/Audit";
 import { ToastProvider, useToast } from "./components/Toast";
 import { useHashRoute } from "./hooks/useHashRoute";
@@ -37,13 +40,17 @@ function Workspace({ session, logout }: { session: NonNullable<Session>; logout:
   return (
     <Shell page={page} setPage={navigate} role={role} username={session.username} logout={logout}>
       {page === "dashboard" && <Dashboard role={role} />}
-      {page === "orders" && <Orders role={role} />}
       {page === "inventory" && <Inventory role={role} />}
       {page === "production" && <Production role={role} />}
-      {page === "masters" && <Masters role={role} />}
-      {page === "payables" && <Payables role={role} />}
+      {page === "purchases" && <Purchases role={role} />}
+      {page === "orders" && <Orders role={role} />}
+      {page === "invoices" && <Invoices role={role} />}
+      {page === "payments" && <Payments role={role} />}
       {page === "reports" && <Reports />}
+      {page === "users" && <Users role={role} />}
+      {page === "masters" && <Masters role={role} />}
       {page === "audit" && <Audit />}
+      {page === "payables" && <Purchases role={role} />}
     </Shell>
   );
 }

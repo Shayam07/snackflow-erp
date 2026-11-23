@@ -12,17 +12,18 @@ export function PageHeader({ eyebrow, title, description, actions }: {
       <div>
         {eyebrow && <div className="eyebrow">{eyebrow}</div>}
         <h1>{title}</h1>
-        {description && <p className="muted">{description}</p>}
+        {description && <p>{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
 
-export function Modal({ open, title, subtitle, onClose, children, footer, wide = false }: {
+export function Modal({ open, title, subtitle, description, onClose, children, footer, wide = false }: {
   open: boolean;
   title: string;
   subtitle?: string;
+  description?: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
@@ -38,15 +39,16 @@ export function Modal({ open, title, subtitle, onClose, children, footer, wide =
   }, [open, onClose]);
 
   if (!open) return null;
+  const sub = subtitle ?? description;
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className={`modal-card ${wide ? "modal-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
         <header className="modal-head">
           <div>
             <h2>{title}</h2>
-            {subtitle && <p className="muted text-xs">{subtitle}</p>}
+            {sub && <p className="muted text-xs mt-0.5">{sub}</p>}
           </div>
-          <button className="icon-btn" onClick={onClose} aria-label="Close dialog">
+          <button className="small-btn !p-1.5 hover:bg-canvas" onClick={onClose} aria-label="Close dialog">
             <X size={16} />
           </button>
         </header>
@@ -66,20 +68,24 @@ export function EmptyState({ title, description, action, icon }: {
   return (
     <div className="empty-state">
       <div className="empty-icon">{icon ?? <Inbox size={20} />}</div>
-      <p className="text-sm font-semibold text-slate-200">{title}</p>
-      {description && <p className="muted text-xs max-w-sm">{description}</p>}
-      {action}
+      <p className="text-sm font-bold text-navy">{title}</p>
+      {description && <p className="muted text-xs max-w-sm text-center">{description}</p>}
+      {action && <div className="mt-2">{action}</div>}
     </div>
   );
 }
 
 export function TableSkeleton({ rows = 5, columns = 4 }: { rows?: number; columns?: number }) {
   return (
-    <div className="space-y-2" aria-hidden="true">
+    <div className="space-y-2 py-2" aria-hidden="true">
       {Array.from({ length: rows }).map((_, rowIndex) => (
-        <div key={rowIndex} className="skeleton-row">
+        <div key={rowIndex} className="flex gap-4 p-3 bg-canvas/60 rounded border border-border/50 animate-pulse">
           {Array.from({ length: columns }).map((__, columnIndex) => (
-            <span key={columnIndex} className="skeleton-bar" />
+            <span
+              key={columnIndex}
+              className="h-3.5 bg-slate-subtle rounded"
+              style={{ width: `${Math.floor(60 + Math.random() * 35)}%` }}
+            />
           ))}
         </div>
       ))}
@@ -96,15 +102,15 @@ export function Pagination({ total, limit, offset, onChange }: {
   const page = Math.floor(offset / limit) + 1;
   const pages = Math.max(1, Math.ceil(total / limit));
   return (
-    <div className="pagination">
-      <span className="muted text-xs">
-        Showing {total === 0 ? 0 : offset + 1}–{Math.min(offset + limit, total)} of {total}
+    <div className="flex items-center justify-between pt-3 mt-2 border-t border-border text-xs">
+      <span className="muted">
+        Showing <strong>{total === 0 ? 0 : offset + 1}–{Math.min(offset + limit, total)}</strong> of <strong>{total}</strong> entries
       </span>
       <div className="flex items-center gap-1.5">
         <button className="small-btn" disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - limit))}>
-          <ChevronLeft size={13} /> Prev
+          <ChevronLeft size={13} /> Previous
         </button>
-        <span className="text-xs text-slate-400 tabular-nums">Page {page} / {pages}</span>
+        <span className="text-xs text-charcoal font-semibold px-2 tabular-nums">Page {page} of {pages}</span>
         <button
           className="small-btn"
           disabled={offset + limit >= total}
@@ -120,7 +126,7 @@ export function Pagination({ total, limit, offset, onChange }: {
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label className="field-label">
-      {label}
+      <span>{label}</span>
       {children}
       {hint && <span className="field-hint">{hint}</span>}
     </label>

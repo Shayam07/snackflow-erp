@@ -1,5 +1,8 @@
-import { useState, type ReactNode } from "react";
-import { KeyRound, LogOut, Menu, X } from "lucide-react";
+import { useState, useEffect, type ReactNode } from "react";
+import {
+  Bell, ChevronLeft, ChevronRight, KeyRound, LogOut, Menu,
+  PanelLeftClose, PanelLeftOpen, Shield, User as UserIcon, X,
+} from "lucide-react";
 import { api, clearSession } from "../services/api";
 import { navForRole } from "../lib/nav";
 import { Field, Modal } from "../components/ui";
@@ -14,27 +17,35 @@ type Props = {
   children: ReactNode;
 };
 
-const roleBadgeColor: Record<string, string> = {
-  admin: "bg-purple-500/10 text-purple-300 border-purple-500/30",
-  production: "bg-amber-500/10 text-amber-300 border-amber-500/30",
-  salesman: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
-  auditor: "bg-blue-500/10 text-blue-300 border-blue-500/30",
-  owner: "bg-rose-500/10 text-rose-300 border-rose-500/30",
+const roleBadge: Record<string, { label: string; bg: string; text: string; border: string }> = {
+  admin: { label: "Factory Admin", bg: "bg-navy-subtle", text: "text-navy", border: "border-navy/20" },
+  production: { label: "Production Floor", bg: "bg-amber-subtle", text: "text-amber-dark", border: "border-amber/30" },
+  salesman: { label: "Field Sales", bg: "bg-teal-subtle", text: "text-teal-dark", border: "border-teal/30" },
+  auditor: { label: "Statutory Auditor", bg: "bg-slate-subtle", text: "text-charcoal", border: "border-slate/30" },
+  owner: { label: "Business Owner", bg: "bg-amber-subtle", text: "text-amber-dark", border: "border-amber/40" },
 };
 
 export default function Shell({ page, setPage, role, username, logout, children }: Props) {
   const toast = useToast();
-  const [open, setOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    return localStorage.getItem("snackflow_sidebar_collapsed") === "true";
+  });
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ current_password: "", new_password: "", confirm: "" });
 
+  useEffect(() => {
+    localStorage.setItem("snackflow_sidebar_collapsed", String(collapsed));
+  }, [collapsed]);
+
   const items = navForRole(role);
   const active = items.find((item) => item.key === page);
+  const roleInfo = roleBadge[role] || { label: role, bg: "bg-slate-subtle", text: "text-charcoal", border: "border-slate/30" };
 
   function navigate(next: string) {
     setPage(next);
-    setOpen(false);
+    setMobileOpen(false);
   }
 
   async function changePassword(event: React.FormEvent) {
@@ -52,7 +63,7 @@ export default function Shell({ page, setPage, role, username, logout, children 
           new_password: form.new_password,
         }),
       });
-      toast.success("Password updated");
+      toast.success("Password updated successfully");
       setPasswordOpen(false);
       setForm({ current_password: "", new_password: "", confirm: "" });
     } catch (exception: any) {
@@ -62,106 +73,231 @@ export default function Shell({ page, setPage, role, username, logout, children 
     }
   }
 
+  // Format today's date
+  const todayFormatted = new Intl.DateTimeFormat("en-IN", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date());
+
   return (
     <div className="app-shell">
-      {open && <div className="sidebar-scrim" onClick={() => setOpen(false)} />}
-      <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
-        <div className="brand">
-          <div className="brand-mark">S</div>
-          <div>
-            <div className="font-bold text-slate-100 tracking-tight">SnackFlow</div>
-            <div className="muted text-xs">Manufacturing ERP</div>
+      {/* Mobile Drawer Backdrop */}
+      {mobileOpen && (
+        <div className="sidebar-scrim" onClick={() => setMobileOpen(false)} aria-hidden="true" />
+      )}
+
+      {/* Sophisticated Dark Midnight Navy Sidebar (#142B3B) */}
+      <aside className={`sidebar ${collapsed ? "sidebar-collapsed" : ""} ${mobileOpen ? "sidebar-open" : ""}`}>
+        {/* Brand Header */}
+        <div className="sidebar-head">
+          <div className="brand">
+            <div className="brand-mark" title="SnackFlow ERP">S</div>
+            {!collapsed && (
+              <div className="brand-text">
+                <div className="brand-title">SnackFlow</div>
+                <div className="brand-sub">Manufacturing ERP</div>
+              </div>
+            )}
           </div>
-          <button className="icon-btn ml-auto lg:hidden" onClick={() => setOpen(false)} aria-label="Close menu">
-            <X size={16} />
-          </button>
-        </div>
 
-        <div className="mt-8 px-3 text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">
-          Workspace
-        </div>
-
-        <nav className="mt-2.5 space-y-1">
-          {items.map(({ key, label, icon: Icon }) => (
+          <div className="flex items-center gap-1">
+            {/* Desktop Collapse Toggle */}
             <button
-              key={key}
-              className={`nav-item ${page === key ? "active" : ""}`}
-              onClick={() => navigate(key)}
-              aria-current={page === key ? "page" : undefined}
+              type="button"
+              className="hidden lg:flex p-1.5 rounded text-slate-light hover:text-white hover:bg-white/10 transition-colors"
+              onClick={() => setCollapsed(!collapsed)}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label="Toggle sidebar width"
             >
-              <Icon size={16} />
-              <span>{label}</span>
+              {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
             </button>
-          ))}
+            {/* Mobile Close Button */}
+            <button
+              type="button"
+              className="flex lg:hidden p-1.5 rounded text-slate-light hover:text-white"
+              onClick={() => setMobileOpen(false)}
+              aria-label="Close menu"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Navigation Section */}
+        {!collapsed && (
+          <div className="nav-section-title">Operations & Ledger</div>
+        )}
+
+        <nav className="mt-1 space-y-0.5 overflow-y-auto flex-1 py-1">
+          {items.map(({ key, label, icon: Icon }) => {
+            const isActive = page === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                className={`nav-item ${isActive ? "active" : ""} ${collapsed ? "!justify-center !px-0" : ""}`}
+                onClick={() => navigate(key)}
+                title={collapsed ? label : undefined}
+                aria-current={isActive ? "page" : undefined}
+              >
+                <span className="nav-item-icon">
+                  <Icon size={17} />
+                </span>
+                {!collapsed && <span>{label}</span>}
+              </button>
+            );
+          })}
         </nav>
 
+        {/* Sidebar Footer with User Profile */}
         <div className="sidebar-foot">
-          <div className="flex items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-900/60 p-2.5">
-            <div className="avatar">{username.slice(0, 1).toUpperCase()}</div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-xs font-semibold text-slate-100">{username}</div>
-              <span className={`mt-0.5 inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${roleBadgeColor[role] || "border-slate-700 text-slate-300"}`}>
-                {role}
-              </span>
+          <div className={`user-card ${collapsed ? "justify-center" : ""}`}>
+            <div className="avatar" title={username}>
+              {username.slice(0, 1).toUpperCase()}
+            </div>
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-bold text-white leading-tight">{username}</div>
+                <div className="truncate text-[10.5px] text-teal-light font-medium capitalize mt-0.5">
+                  {roleInfo.label}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {!collapsed && (
+            <div className="mt-3 grid grid-cols-2 gap-1.5 pt-2 border-t border-white/10">
+              <button
+                type="button"
+                className="small-btn !bg-navy-light/60 !text-slate-light hover:!text-white !border-white/10 !py-1 text-[11px]"
+                onClick={() => setPasswordOpen(true)}
+              >
+                <KeyRound size={12} /> Key
+              </button>
+              <button
+                type="button"
+                className="small-btn !bg-navy-light/60 !text-slate-light hover:!text-crimson !border-white/10 !py-1 text-[11px]"
+                onClick={() => {
+                  clearSession();
+                  logout();
+                }}
+              >
+                <LogOut size={12} /> Sign out
+              </button>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* Main Area */}
+      <div className={`main-col ${collapsed ? "main-col-collapsed" : ""}`}>
+        {/* Topbar: Clean Surface (#FFFFFF) */}
+        <header className="topbar">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="p-1.5 rounded-md border border-border text-charcoal lg:hidden hover:bg-canvas"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open mobile menu"
+            >
+              <Menu size={18} />
+            </button>
+
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate">
+                SnackFlow ERP / Operations
+              </div>
+              <div className="text-sm font-bold text-navy flex items-center gap-2">
+                <span>{active?.label ?? "Dashboard"}</span>
+              </div>
             </div>
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-1.5">
-            <button className="small-btn" onClick={() => setPasswordOpen(true)}>
-              <KeyRound size={12} /> Password
-            </button>
+
+          {/* Right Topbar Elements */}
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* Date Indicator */}
+            <div className="hidden md:flex items-center text-xs font-medium text-slate">
+              <span>{todayFormatted}</span>
+            </div>
+
+            {/* Live Ledger Status Badge */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-subtle border border-emerald/20 text-[11px] font-semibold text-emerald-dark">
+              <span className="status-dot" />
+              <span>Live Ledger Connected</span>
+            </div>
+
+            {/* Role Pill */}
+            <div className={`hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-semibold border ${roleInfo.bg} ${roleInfo.text} ${roleInfo.border}`}>
+              <Shield size={11} />
+              <span>{roleInfo.label}</span>
+            </div>
+
+            {/* Quick Profile / Logout button on mobile */}
             <button
-              className="small-btn"
+              type="button"
               onClick={() => {
                 clearSession();
                 logout();
               }}
+              className="small-btn text-xs hover:text-crimson"
+              title="Sign out"
             >
-              <LogOut size={12} /> Sign out
+              <LogOut size={14} />
+              <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
-        </div>
-      </aside>
-
-      <div className="main-col">
-        <header className="topbar">
-          <button className="icon-btn lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
-            <Menu size={18} />
-          </button>
-          <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-[.16em] text-slate-500">
-              SnackFlow ERP
-            </div>
-            <div className="truncate text-sm font-semibold text-slate-100">
-              {active?.label ?? "Overview"}
-            </div>
-          </div>
-          <div className="ml-auto flex items-center gap-3">
-            <span className="hidden items-center gap-1.5 text-[11px] text-slate-400 sm:flex">
-              <span className="status-dot" /> Live ledger
-            </span>
-          </div>
         </header>
+
+        {/* Page Content */}
         <main className="page-content">{children}</main>
       </div>
 
-      <Modal open={passwordOpen} title="Change password"
-        subtitle="Your session stays active after the change." onClose={() => setPasswordOpen(false)}>
+      {/* Change Password Modal */}
+      <Modal
+        open={passwordOpen}
+        title="Change Security Password"
+        subtitle="Your active credentials will be updated immediately in the database."
+        onClose={() => setPasswordOpen(false)}
+      >
         <form onSubmit={changePassword} className="space-y-4">
           <Field label="Current password">
-            <input className="field" type="password" required value={form.current_password}
-              onChange={(event) => setForm({ ...form, current_password: event.target.value })} />
+            <input
+              className="field"
+              type="password"
+              required
+              value={form.current_password}
+              onChange={(e) => setForm({ ...form, current_password: e.target.value })}
+            />
           </Field>
           <Field label="New password" hint="Minimum 8 characters">
-            <input className="field" type="password" required minLength={8} value={form.new_password}
-              onChange={(event) => setForm({ ...form, new_password: event.target.value })} />
+            <input
+              className="field"
+              type="password"
+              required
+              minLength={8}
+              value={form.new_password}
+              onChange={(e) => setForm({ ...form, new_password: e.target.value })}
+            />
           </Field>
           <Field label="Confirm new password">
-            <input className="field" type="password" required minLength={8} value={form.confirm}
-              onChange={(event) => setForm({ ...form, confirm: event.target.value })} />
+            <input
+              className="field"
+              type="password"
+              required
+              minLength={8}
+              value={form.confirm}
+              onChange={(e) => setForm({ ...form, confirm: e.target.value })}
+            />
           </Field>
-          <div className="flex justify-end gap-2 border-t border-slate-800 pt-4">
-            <button type="button" className="secondary-btn" onClick={() => setPasswordOpen(false)}>Cancel</button>
-            <button className="primary-btn" disabled={busy}>{busy ? "Saving…" : "Update password"}</button>
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
+            <button type="button" className="secondary-btn" onClick={() => setPasswordOpen(false)}>
+              Cancel
+            </button>
+            <button className="primary-btn" disabled={busy}>
+              {busy ? "Saving…" : "Update Password"}
+            </button>
           </div>
         </form>
       </Modal>

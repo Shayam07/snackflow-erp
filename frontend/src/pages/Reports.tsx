@@ -1,6 +1,14 @@
 import { useState } from "react";
-import { Download, FileSpreadsheet, FileText, Calendar, Filter } from "lucide-react";
+import {
+  BarChart3,
+  Calendar,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Filter,
+} from "lucide-react";
 import { download } from "../services/api";
+import { PageHeader } from "../components/ui";
 
 type ReportDef = {
   key: string;
@@ -10,17 +18,72 @@ type ReportDef = {
 };
 
 const reportList: ReportDef[] = [
-  { key: "sales", title: "Sales Register", desc: "Invoice-level taxable value, CGST, SGST and line breakdown.", category: "sales" },
-  { key: "customer-sales", title: "Customer-wise Sales", desc: "Aggregated taxable revenues and volumes grouped by customer.", category: "sales" },
-  { key: "product-sales", title: "Product-wise Sales", desc: "Sales volume and revenue grouped by SKU product code.", category: "sales" },
-  { key: "gst", title: "GST Outward Supplies (GSTR-1)", desc: "Tax classification, B2B outward invoice schedule and place of supply.", category: "compliance" },
-  { key: "purchases", title: "Purchase Register", desc: "Supplier procurement bills, receipt dates, quantities and landed rates.", category: "inventory" },
-  { key: "stock", title: "Stock Valuation Summary", desc: "Current on-hand balances, moving weighted-average costs and carrying values.", category: "inventory" },
-  { key: "ledger", title: "Source-Linked Stock Ledger", desc: "Chronological audit trail of all signed inventory movements and doc IDs.", category: "inventory" },
-  { key: "production", title: "Production Variance & Yield", desc: "BOM planned versus actual consumption, batch yield % and loss analysis.", category: "production" },
-  { key: "collections", title: "Receivables & Aging Schedule", desc: "Invoice collections, payment allocations, outstanding balances and days aged.", category: "compliance" },
-  { key: "payables", title: "Supplier Payables", desc: "Billed, paid and outstanding balances for every supplier account.", category: "compliance" },
-  { key: "audit", title: "Audit Trail", desc: "Every approval, posting, master change and login with actor and snapshots.", category: "compliance" },
+  {
+    key: "sales",
+    title: "Sales Register",
+    desc: "Invoice-level taxable value, CGST, SGST and customer order breakdown.",
+    category: "sales",
+  },
+  {
+    key: "customer-sales",
+    title: "Customer-wise Sales",
+    desc: "Aggregated taxable revenues, order volume, and state distribution grouped by client.",
+    category: "sales",
+  },
+  {
+    key: "product-sales",
+    title: "Product-wise Sales",
+    desc: "Sales revenue, pack sizes and physical volume by finished goods product code.",
+    category: "sales",
+  },
+  {
+    key: "gst",
+    title: "GST Outward Supplies (GSTR-1)",
+    desc: "Tax classification, B2B outward invoice schedule, and place of supply breakdown.",
+    category: "compliance",
+  },
+  {
+    key: "purchases",
+    title: "Purchase Register",
+    desc: "Vendor raw material bills, receipt dates, quantities, and landed unit costs.",
+    category: "inventory",
+  },
+  {
+    key: "stock",
+    title: "Stock Valuation Summary",
+    desc: "Current on-hand warehouse balances, moving weighted-average costs, and inventory values.",
+    category: "inventory",
+  },
+  {
+    key: "ledger",
+    title: "Source-Linked Stock Ledger",
+    desc: "Chronological audit trail of all signed stock movements, purchase docs, and dispatches.",
+    category: "inventory",
+  },
+  {
+    key: "production",
+    title: "Production Variance & Yield",
+    desc: "BOM planned versus actual ingredient consumption, good vs damaged pouches, and batch yield %.",
+    category: "production",
+  },
+  {
+    key: "collections",
+    title: "Receivables & Aging Schedule",
+    desc: "Customer invoice collections, payment allocations, outstanding balances, and aged debt.",
+    category: "compliance",
+  },
+  {
+    key: "payables",
+    title: "Supplier Payables Register",
+    desc: "Vendor bills, disbursements, and net pending credit balances.",
+    category: "compliance",
+  },
+  {
+    key: "audit",
+    title: "System Audit Trail",
+    desc: "Comprehensive activity log capturing every approval, posting, master edit, and user session.",
+    category: "compliance",
+  },
 ];
 
 export default function Reports() {
@@ -28,7 +91,10 @@ export default function Reports() {
   const [to, setTo] = useState("");
   const [category, setCategory] = useState<string>("all");
 
-  const suffix = from || to ? `?${from ? `date_from=${from}` : ""}${from && to ? "&" : ""}${to ? `date_to=${to}` : ""}` : "";
+  const suffix =
+    from || to
+      ? `?${from ? `date_from=${from}` : ""}${from && to ? "&" : ""}${to ? `date_to=${to}` : ""}`
+      : "";
 
   function setPreset(days: number) {
     if (days === 0) {
@@ -42,106 +108,142 @@ export default function Reports() {
     setTo(today);
   }
 
-  const filteredReports = reportList.filter((r) => category === "all" || r.category === category);
+  const filteredReports = reportList.filter(
+    (r) => category === "all" || r.category === category
+  );
 
   return (
     <div className="space-y-6">
-      <div className="page-heading">
-        <div>
-          <div className="eyebrow flex items-center gap-1.5">AUDIT & COMPLIANCE SUITE</div>
-          <h1>Management & Statutory Reports</h1>
-          <p className="muted">Export dynamic audit registers in CSV, Excel and formal PDF formats.</p>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="AUDIT & COMPLIANCE SUITE"
+        title="Management & Statutory Reports"
+        description="Generate certified audit registers in CSV, Excel spreadsheets (.xlsx), and formal PDF reports."
+      />
 
-      <section className="panel">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+      {/* FILTER & DATE CONTROLS */}
+      <div className="card p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#DFE3E6] gap-2">
           <div className="flex items-center gap-2">
-            <Calendar size={18} className="text-emerald-400" />
-            <h2>Date Range & Quick Presets</h2>
+            <Calendar size={18} className="text-[#087F8C]" />
+            <h3 className="font-semibold text-sm text-[#142B3B]">Date Range & Preset Windows</h3>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            <button type="button" className="small-btn !py-1 text-xs" onClick={() => setPreset(0)}>All Time</button>
-            <button type="button" className="small-btn !py-1 text-xs" onClick={() => setPreset(30)}>Last 30 Days</button>
-            <button type="button" className="small-btn !py-1 text-xs" onClick={() => setPreset(7)}>Last 7 Days</button>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              className="px-2.5 py-1 text-xs font-medium rounded border border-[#DFE3E6] bg-white text-[#657580] hover:bg-[#F5F6F2]"
+              onClick={() => setPreset(0)}
+            >
+              All Time
+            </button>
+            <button
+              type="button"
+              className="px-2.5 py-1 text-xs font-medium rounded border border-[#DFE3E6] bg-white text-[#657580] hover:bg-[#F5F6F2]"
+              onClick={() => setPreset(30)}
+            >
+              Last 30 Days
+            </button>
+            <button
+              type="button"
+              className="px-2.5 py-1 text-xs font-medium rounded border border-[#DFE3E6] bg-white text-[#657580] hover:bg-[#F5F6F2]"
+              onClick={() => setPreset(7)}
+            >
+              Last 7 Days
+            </button>
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="field-label">
             From Date
-            <input type="date" className="field" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <input
+              type="date"
+              className="field mt-1"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
           </label>
           <label className="field-label">
             To Date
-            <input type="date" className="field" value={to} onChange={(e) => setTo(e.target.value)} />
+            <input
+              type="date"
+              className="field mt-1"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
           </label>
         </div>
-        <p className="muted mt-2 text-xs">
-          * Date filters apply to transactions with timestamps (Invoices, Purchases, Production). Stock valuation remains current as of now.
+        <p className="text-[11px] text-[#657580]">
+          * Date boundaries filter time-series registers (Invoices, Purchases, Production runs). Inventory valuations reflect real-time live balances.
         </p>
-      </section>
+      </div>
 
-      {/* Category Filter Chips */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Filter size={15} className="text-slate-400 mr-1" />
+      {/* CATEGORY SELECTOR CHIPS */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Filter size={15} className="text-[#657580] mr-1" />
         {[
           ["all", "All Reports"],
-          ["sales", "Sales & Billing"],
-          ["inventory", "Inventory & Movements"],
-          ["production", "Manufacturing & Yield"],
+          ["sales", "Commercial & Invoices"],
+          ["inventory", "Warehouse & Inventory"],
+          ["production", "Manufacturing & Costing"],
           ["compliance", "Tax & Audit Compliance"],
         ].map(([key, label]) => (
           <button
             key={key}
             onClick={() => setCategory(key)}
-            className={`tab-btn !py-1.5 !px-3 text-xs ${category === key ? "selected" : ""}`}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
+              category === key
+                ? "bg-[#142B3B] text-white border-[#142B3B]"
+                : "bg-white text-[#657580] border-[#DFE3E6] hover:bg-[#F5F6F2]"
+            }`}
           >
             {label}
           </button>
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* REPORT TILES GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredReports.map((report) => (
-          <section className="panel flex flex-col justify-between" key={report.key}>
+          <div key={report.key} className="card p-5 flex flex-col justify-between hover:border-[#087F8C]/40 transition-colors">
             <div className="flex items-start gap-3.5">
-              <div className="icon-box shrink-0">
-                <FileText size={19} />
+              <div className="w-10 h-10 rounded bg-[#142B3B]/10 text-[#142B3B] flex items-center justify-center shrink-0">
+                <FileText size={18} />
               </div>
-              <div className="min-w-0 flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <h2>{report.title}</h2>
-                  <span className="tag text-[10px] uppercase tracking-wider">{report.category}</span>
+                  <h3 className="font-semibold text-sm text-[#142B3B]">{report.title}</h3>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#087F8C] bg-[#087F8C]/10 px-2 py-0.5 rounded">
+                    {report.category}
+                  </span>
                 </div>
-                <p className="muted mt-1 text-xs leading-relaxed">{report.desc}</p>
+                <p className="text-xs text-[#657580] mt-1 leading-relaxed">{report.desc}</p>
               </div>
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-800/70 pt-3">
+            <div className="mt-5 pt-3 border-t border-[#DFE3E6] flex items-center gap-2 flex-wrap">
               <button
-                className="small-btn bg-emerald-500/10 text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/20"
+                className="secondary-btn !py-1 text-xs"
                 onClick={() => download(`/api/reports/export/${report.key}.csv${suffix}`, `${report.key}.csv`)}
-                title="Download CSV"
+                title="Download CSV register"
               >
-                <Download size={13} /> CSV
+                <Download size={12} /> CSV
               </button>
               <button
-                className="small-btn bg-teal-500/10 text-teal-400 border-teal-500/25 hover:bg-teal-500/20"
+                className="secondary-btn !py-1 text-xs !bg-[#087F8C]/10 !text-[#087F8C] !border-[#087F8C]/30 hover:!bg-[#087F8C]/20"
                 onClick={() => download(`/api/reports/export/${report.key}.xlsx${suffix}`, `${report.key}.xlsx`)}
-                title="Download Excel Workbook"
+                title="Download Microsoft Excel Workbook"
               >
-                <FileSpreadsheet size={13} /> Excel
+                <FileSpreadsheet size={12} /> Excel (.xlsx)
               </button>
               <button
-                className="small-btn bg-rose-500/10 text-rose-400 border-rose-500/25 hover:bg-rose-500/20"
+                className="secondary-btn !py-1 text-xs !bg-[#142B3B]/10 !text-[#142B3B] !border-[#142B3B]/30 hover:!bg-[#142B3B]/20"
                 onClick={() => download(`/api/reports/export/${report.key}.pdf${suffix}`, `${report.key}.pdf`)}
-                title="Download Formatted PDF Document"
+                title="Download Formatted PDF"
               >
-                <FileText size={13} /> PDF
+                <FileText size={12} /> PDF
               </button>
             </div>
-          </section>
+          </div>
         ))}
       </div>
     </div>

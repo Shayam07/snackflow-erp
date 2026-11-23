@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
-  Calculator, Download, RefreshCw, ShoppingBag, Search, SlidersHorizontal, CheckCircle2,
+  AlertTriangle, Calculator, CheckCircle2, Download, Package,
+  Plus, RefreshCw, Search, ShoppingBag, SlidersHorizontal,
 } from "lucide-react";
-import { api, download, qs, type Paged } from "../services/api";
-import { Field, Modal, PageHeader, Pagination, TableSkeleton } from "../components/ui";
+import { api, download, money, qs, type Paged } from "../services/api";
+import { EmptyState, Field, Modal, PageHeader, Pagination, TableSkeleton } from "../components/ui";
 import { useToast } from "../components/Toast";
 
 type SummaryRow = {
@@ -38,6 +39,8 @@ export default function Inventory({ role }: { role: string }) {
   const [ledgerItem, setLedgerItem] = useState("");
   const [ledgerType, setLedgerType] = useState("");
 
+  // Purchase receipt modal & form
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [itemId, setItemId] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -46,11 +49,13 @@ export default function Inventory({ role }: { role: string }) {
   const [convKg, setConvKg] = useState("60");
   const [convRatePerKg, setConvRatePerKg] = useState("45");
 
+  // Adjustment modal
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [adjust, setAdjust] = useState({ item_id: "", quantity: "", reason: "", unit_cost: "" });
   const [busy, setBusy] = useState(false);
 
   const isAdmin = role === "admin";
+  const canReceive = ["admin", "production"].includes(role);
 
   async function loadSummary() {
     setLoading(true);
@@ -104,9 +109,10 @@ export default function Inventory({ role }: { role: string }) {
           lines: [{ item_id: Number(itemId), quantity, unit_cost: rate }],
         }),
       });
-      toast.success(`Purchase receipt posted · ${result.purchase_id} · ₹${result.total}`);
+      toast.success(`Purchase receipt posted · Ref: PUR-${result.purchase_id} · ${money(result.total)}`);
       setQuantity("");
       setRate("");
+      setPurchaseOpen(false);
       await refresh();
     } catch (exception: any) {
       toast.error(exception.message);
@@ -128,7 +134,7 @@ export default function Inventory({ role }: { role: string }) {
           unit_cost: adjust.unit_cost || null,
         }),
       });
-      toast.success("Stock adjustment appended to the ledger");
+      toast.success("Stock adjustment committed to immutable ledger");
       setAdjustOpen(false);
       setAdjust({ item_id: "", quantity: "", reason: "", unit_cost: "" });
       await refresh();
@@ -140,8 +146,10 @@ export default function Inventory({ role }: { role: string }) {
   }
 
   function applyConverter() {
-    setQuantity(String((Number(convKg) || 0) * 1000));
-    setRate(String((Number(convRatePerKg) || 0) / 1000));
+    const kg = Number(convKg) || 0;
+    const r = Number(convRatePerKg) || 0;
+    setQuantity(String(kg * 1000));
+    setRate(String(r / 1000));
     setShowConverter(false);
   }
 
@@ -154,21 +162,27 @@ export default function Inventory({ role }: { role: string }) {
   }), [rows, categoryFilter, search]);
 
   const lowStock = rows.filter((row) => row.below_reorder);
+  const totalValuation = rows.reduce((acc, curr) => acc + Number(curr.carrying_value || 0), 0);
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="INVENTORY CONTROL & VALUATION"
         title="Inventory & Stock Ledger"
-        description="Moving weighted-average valuation, source-linked ledger, purchase receipts and count corrections."
+        description="Dynamic moving weighted-average valuation, source-linked ledger and physical count corrections."
         actions={
           <>
-            <button className="secondary-btn" onClick={() => void refresh()}>
-              <RefreshCw size={15} /> Refresh
+            <button type="button" className="secondary-btn text-xs" onClick={() => void refresh()}>
+              <RefreshCw size={14} /> Refresh
             </button>
+            {canReceive && (
+              <button type="button" className="primary-btn text-xs" onClick={() => setPurchaseOpen(true)}>
+                <ShoppingBag size={14} /> Receive Purchase
+              </button>
+            )}
             {isAdmin && (
-              <button className="primary-btn" onClick={() => setAdjustOpen(true)}>
-                <SlidersHorizontal size={15} /> Adjust stock
+              <button type="button" className="secondary-btn text-xs" onClick={() => setAdjustOpen(true)}>
+                <SlidersHorizontal size={14} className="text-navy" /> Adjust Stock
               </button>
             )}
           </>
@@ -177,84 +191,62 @@ export default function Inventory({ role }: { role: string }) {
 
       {error && <div className="error-box">{error}</div>}
 
+      {/* Inventory Summary Header Cards */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="kpi-card">
+          <span className="kpi-label">Total Inventory Valuation</span>
+          <div className="kpi-value text-teal">{money(totalValuation)}</div>
+          <span className="kpi-hint">Carrying cost across all SKUs</span>
+        </div>
+        <div className="kpi-card">
+          <span className="kpi-label">Tracked SKUs</span>
+          <div className="kpi-value text-navy">{rows.length} Items</div>
+          <span className="kpi-hint">Raw, packaging & finished</span>
+        </div>
+        <div className="kpi-card">
+          <span className="kpi-label">Stock Status</span>
+          <div className="kpi-value text-emerald-dark">
+            {rows.length - lowStock.length} Healthy
+          </div>
+          <span className="kpi-hint">Above safety reorder thresholds</span>
+        </div>
+        <div className="kpi-card">
+          <span className="kpi-label">Reorder Alerts</span>
+          <div className={`kpi-value ${lowStock.length > 0 ? "text-amber-dark" : "text-navy"}`}>
+            {lowStock.length} Items
+          </div>
+          <span className="kpi-hint">
+            {lowStock.length ? "Needs replenishment" : "Zero shortage warnings"}
+          </span>
+        </div>
+      </div>
+
       {lowStock.length > 0 && (
         <div className="notice notice-warn">
-          <span className="font-semibold">{lowStock.length} item(s) at or below reorder level:</span>{" "}
-          {lowStock.map((row) => row.item).join(", ")}
+          <AlertTriangle size={18} className="shrink-0 text-amber-dark" />
+          <div className="text-xs">
+            <span className="font-bold text-amber-dark block">Low Stock Warning</span>
+            <span>The following items are at or below reorder level: <strong>{lowStock.map((r) => r.item).join(", ")}</strong></span>
+          </div>
         </div>
       )}
 
-      {["admin", "production"].includes(role) && (
-        <form onSubmit={receive} className="panel">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <ShoppingBag size={18} className="text-emerald-400" />
-              <h2>Record Purchase Receipt</h2>
-            </div>
-            <button type="button" className="small-btn" onClick={() => setShowConverter(!showConverter)}>
-              <Calculator size={13} className="text-emerald-400" /> Unit helper (kg/L → base)
-            </button>
-          </div>
-
-          {showConverter && (
-            <div className="mt-3 grid gap-3 sm:grid-cols-3 items-end rounded-xl border border-emerald-500/25 bg-slate-950/80 p-3.5">
-              <Field label="Bulk quantity (kg or L)">
-                <input className="field !mt-0 !py-1 text-xs" type="number" value={convKg}
-                  onChange={(event) => setConvKg(event.target.value)} />
-              </Field>
-              <Field label="Price per bulk unit (₹)">
-                <input className="field !mt-0 !py-1 text-xs" type="number" value={convRatePerKg}
-                  onChange={(event) => setConvRatePerKg(event.target.value)} />
-              </Field>
-              <button type="button" className="primary-btn !py-2 !text-xs" onClick={applyConverter}>
-                Convert & fill ({(Number(convKg) || 0) * 1000} base units)
-              </button>
-            </div>
-          )}
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label="Supplier">
-              <select className="field" value={supplierId} onChange={(event) => setSupplierId(event.target.value)}>
-                {masters?.suppliers?.map((supplier) => (
-                  <option value={supplier.id} key={supplier.id}>{supplier.name} ({supplier.state})</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Inventory item">
-              <select className="field" value={itemId} onChange={(event) => setItemId(event.target.value)}>
-                {masters?.items?.filter((entry) => entry.type !== "finished").map((entry) => (
-                  <option value={entry.id} key={entry.id}>{entry.name} · {entry.unit}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label={`Quantity (${selectedItem?.unit || "base unit"})`}>
-              <input className="field" type="number" min="0.001" step="0.001" required
-                value={quantity} onChange={(event) => setQuantity(event.target.value)} />
-            </Field>
-            <Field label={`Unit cost (₹ / ${selectedItem?.unit || "unit"})`}>
-              <input className="field" type="number" min="0" step="0.0001" required
-                value={rate} onChange={(event) => setRate(event.target.value)} />
-            </Field>
-          </div>
-
-          <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-800/80 pt-3">
-            <p className="muted text-xs">
-              Quantities are stored in base units; posting recalculates the moving weighted-average rate.
-            </p>
-            <button className="primary-btn" disabled={busy}>
-              <CheckCircle2 size={15} /> {busy ? "Posting…" : "Post purchase receipt"}
-            </button>
-          </div>
-        </form>
-      )}
-
+      {/* Navigation Controls: Tabs & Search Filter */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="tab-bar !mt-0">
-          <button className={`tab-btn ${tab === "summary" ? "selected" : ""}`} onClick={() => setTab("summary")}>
-            Stock balances
+        <div className="tab-bar">
+          <button
+            type="button"
+            className={`tab-btn ${tab === "summary" ? "selected" : ""}`}
+            onClick={() => setTab("summary")}
+          >
+            Stock Valuation Summary
           </button>
-          <button className={`tab-btn ${tab === "ledger" ? "selected" : ""}`} onClick={() => { setTab("ledger"); setOffset(0); }}>
-            Movement ledger
+          <button
+            type="button"
+            className={`tab-btn ${tab === "ledger" ? "selected" : ""}`}
+            onClick={() => { setTab("ledger"); setOffset(0); }}
+          >
+            Immutable Movement Ledger
           </button>
         </div>
 
@@ -262,13 +254,21 @@ export default function Inventory({ role }: { role: string }) {
           {tab === "summary" ? (
             <>
               <div className="search-box">
-                <Search size={13} />
-                <input placeholder="Filter items…" value={search} onChange={(event) => setSearch(event.target.value)} />
+                <Search size={14} />
+                <input
+                  placeholder="Search item or SKU…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
               </div>
-              <div className="flex gap-1">
+              <div className="tab-bar">
                 {["all", "raw", "packaging", "finished"].map((category) => (
-                  <button key={category} onClick={() => setCategoryFilter(category)}
-                    className={`tab-btn !py-1 !px-2.5 text-xs capitalize ${categoryFilter === category ? "selected" : ""}`}>
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => setCategoryFilter(category)}
+                    className={`tab-btn capitalize ${categoryFilter === category ? "selected" : ""}`}
+                  >
                     {category}
                   </button>
                 ))}
@@ -276,159 +276,352 @@ export default function Inventory({ role }: { role: string }) {
             </>
           ) : (
             <>
-              <select className="field !mt-0 !py-1.5 text-xs w-44" value={ledgerItem}
-                onChange={(event) => { setLedgerItem(event.target.value); setOffset(0); }}>
-                <option value="">All items</option>
-                {masters?.items?.map((entry) => (
-                  <option key={entry.id} value={entry.id}>{entry.name}</option>
+              <select
+                className="field !py-1 text-xs w-44"
+                value={ledgerItem}
+                onChange={(e) => { setLedgerItem(e.target.value); setOffset(0); }}
+              >
+                <option value="">All Items</option>
+                {masters?.items?.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
                 ))}
               </select>
-              <select className="field !mt-0 !py-1.5 text-xs w-44" value={ledgerType}
-                onChange={(event) => { setLedgerType(event.target.value); setOffset(0); }}>
-                <option value="">All movements</option>
-                {["opening", "purchase", "production_issue", "production_output", "production_overhead",
-                  "dispatch", "adjustment", "sales_return"].map((type) => (
-                  <option key={type} value={type}>{type}</option>
+              <select
+                className="field !py-1 text-xs w-44"
+                value={ledgerType}
+                onChange={(e) => { setLedgerType(e.target.value); setOffset(0); }}
+              >
+                <option value="">All Movements</option>
+                {["opening", "purchase", "production_issue", "production_output", "production_overhead", "dispatch", "adjustment"].map((m) => (
+                  <option key={m} value={m}>{m}</option>
                 ))}
               </select>
             </>
           )}
-          <button className="small-btn"
+
+          <button
+            type="button"
+            className="small-btn"
             onClick={() => void download(
               tab === "summary" ? "/api/reports/export/stock.csv" : "/api/reports/export/ledger.csv",
-              `${tab}.csv`).catch((exception) => toast.error(exception.message))}>
-            <Download size={14} className="text-emerald-400" /> Export
+              `${tab}.csv`,
+            ).catch((e) => toast.error(e.message))}
+          >
+            <Download size={13} className="text-teal" /> Export CSV
           </button>
         </div>
       </div>
 
+      {/* Main Table Panel */}
       <section className="panel">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-          <h2>{tab === "summary" ? "Current Stock Valuation" : "Stock Movement Ledger"}</h2>
-          {tab === "ledger" && ledger && <span className="tag tag-blue">{ledger.total} movements</span>}
+        <div className="panel-header">
+          <div>
+            <h2>{tab === "summary" ? "Current Stock Balances & Moving Average Valuation" : "Chronological Stock Ledger"}</h2>
+            <p className="muted text-xs">
+              {tab === "summary"
+                ? "Aggregated on-hand inventory derived directly from signed movement rows."
+                : "Complete audit log of signed stock transactions with actors and document linkages."}
+            </p>
+          </div>
+          {tab === "ledger" && ledger && (
+            <span className="tag tag-teal">{ledger.total} Movements</span>
+          )}
         </div>
 
-        <div className="mt-4">
-          {loading && <TableSkeleton rows={6} columns={6} />}
+        <div className="overflow-x-auto">
+          {loading && <TableSkeleton rows={6} columns={7} />}
 
           {!loading && tab === "summary" && (
-            <div className="overflow-x-auto">
+            filteredRows.length ? (
               <table>
                 <thead>
                   <tr>
-                    <th>Item</th><th>Category</th><th>On hand</th><th>Unit</th>
-                    <th>Carrying value</th><th>Moving avg</th>
+                    <th>Item Name</th>
+                    <th>Category</th>
+                    <th>Current Stock</th>
+                    <th>Unit</th>
+                    <th>Moving Avg Cost</th>
+                    <th>Total Valuation</th>
+                    <th>Availability Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRows.map((row) => (
                     <tr key={row.item}>
-                      <td className="font-semibold text-slate-100">
-                        {row.item}
-                        {row.below_reorder && <span className="tag tag-amber ml-2">reorder</span>}
-                      </td>
+                      <td className="font-bold text-navy">{row.item}</td>
                       <td>
-                        <span className={`tag ${row.type === "finished" ? "tag-green" : row.type === "packaging" ? "tag-blue" : "tag-amber"}`}>
+                        <span className={`tag ${
+                          row.type === "finished" ? "tag-teal" : row.type === "packaging" ? "tag-amber" : "tag-navy"
+                        }`}>
                           {row.type}
                         </span>
                       </td>
-                      <td className="tabular-nums font-semibold text-slate-100">{row.balance}</td>
+                      <td className="tabular-nums font-bold text-charcoal">{row.balance}</td>
                       <td className="muted text-xs">{row.unit}</td>
-                      <td className="tabular-nums">₹{Number(row.carrying_value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                      <td className="muted tabular-nums text-xs">₹{Number(row.average_cost_per_base_unit || 0).toFixed(4)}</td>
+                      <td className="tabular-nums font-semibold text-charcoal">
+                        ₹{Number(row.average_cost_per_base_unit || 0).toFixed(4)}
+                      </td>
+                      <td className="tabular-nums font-bold text-navy">
+                        {money(row.carrying_value)}
+                      </td>
+                      <td>
+                        {row.below_reorder ? (
+                          <span className="tag tag-amber">Reorder Needed</span>
+                        ) : (
+                          <span className="tag tag-green">In Stock</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {!filteredRows.length && <div className="empty-state">No matching stock records.</div>}
-            </div>
+            ) : (
+              <EmptyState title="No matching items" description="Try adjusting your filter or search query." />
+            )
           )}
 
           {!loading && tab === "ledger" && ledger && (
-            <>
-              <div className="overflow-x-auto">
+            ledger.items.length ? (
+              <>
                 <table>
                   <thead>
                     <tr>
-                      <th>Movement</th><th>Item</th><th>Type</th><th>Quantity</th>
-                      <th>Value</th><th>Source</th><th>When</th>
+                      <th>Movement ID</th>
+                      <th>Item Name</th>
+                      <th>Movement Type</th>
+                      <th>Quantity (Signed)</th>
+                      <th>Extended Value</th>
+                      <th>Source Document</th>
+                      <th>Date & Time</th>
                     </tr>
                   </thead>
                   <tbody>
                     {ledger.items.map((row) => {
-                      const positive = Number(row.quantity) > 0;
+                      const isPositive = Number(row.quantity) > 0;
                       return (
                         <tr key={row.id}>
-                          <td className="font-semibold text-slate-300">#{String(row.id).padStart(5, "0")}</td>
-                          <td className="font-medium">{row.item}</td>
+                          <td className="font-bold text-navy font-mono">#{String(row.id).padStart(5, "0")}</td>
+                          <td className="font-semibold text-charcoal">{row.item}</td>
                           <td>
                             <span className={`tag ${
-                              row.movement_type === "opening" ? "tag-blue"
-                                : row.movement_type === "purchase" ? "tag-green"
+                              row.movement_type === "purchase" ? "tag-green"
                                 : row.movement_type === "production_issue" ? "tag-red"
-                                : row.movement_type === "production_output" ? "tag-green"
-                                : row.movement_type === "adjustment" ? "tag-purple"
-                                : "tag-amber"}`}>
+                                : row.movement_type === "production_output" ? "tag-teal"
+                                : row.movement_type === "dispatch" ? "tag-amber"
+                                : "tag-navy"
+                            }`}>
                               {row.movement_type}
                             </span>
                           </td>
-                          <td className={`tabular-nums font-semibold ${positive ? "text-emerald-400" : "text-rose-400"}`}>
-                            {positive ? `+${row.quantity}` : row.quantity}
+                          <td className={`tabular-nums font-extrabold ${isPositive ? "text-emerald-dark" : "text-crimson-dark"}`}>
+                            {isPositive ? `+${row.quantity}` : row.quantity} {row.unit}
                           </td>
-                          <td className="tabular-nums muted text-xs">₹{Number(row.value).toFixed(2)}</td>
+                          <td className="tabular-nums font-semibold text-charcoal">
+                            ₹{Number(row.value).toFixed(2)}
+                          </td>
                           <td className="muted text-xs">
-                            {row.source}
-                            {row.note && <div className="text-slate-500">{row.note}</div>}
+                            <span className="font-mono">{row.source}</span>
+                            {row.note && <span className="block text-[11px] text-slate">{row.note}</span>}
                           </td>
-                          <td className="muted text-xs whitespace-nowrap">{new Date(row.created_at).toLocaleString()}</td>
+                          <td className="muted text-xs whitespace-nowrap">
+                            {new Date(row.created_at).toLocaleString()}
+                          </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-                {!ledger.items.length && <div className="empty-state">No movements match these filters.</div>}
-              </div>
-              {ledger.total > 0 && (
-                <Pagination total={ledger.total} limit={PAGE_SIZE} offset={offset} onChange={setOffset} />
-              )}
-            </>
+                {ledger.total > 0 && (
+                  <Pagination total={ledger.total} limit={PAGE_SIZE} offset={offset} onChange={setOffset} />
+                )}
+              </>
+            ) : (
+              <EmptyState title="No movement records found" description="No ledger movements match the current filters." />
+            )
           )}
         </div>
       </section>
 
-      <Modal open={adjustOpen} title="Adjust stock"
-        subtitle="Corrections are appended to the immutable ledger with a reason; nothing is overwritten."
-        onClose={() => setAdjustOpen(false)}>
+      {/* Record Purchase Receipt Modal */}
+      <Modal
+        open={purchaseOpen}
+        title="Record Raw Material Purchase Receipt"
+        subtitle="Receipts update the append-only stock ledger and recalculate weighted-average cost."
+        onClose={() => setPurchaseOpen(false)}
+      >
+        <form onSubmit={receive} className="space-y-4">
+          <div className="flex items-center justify-between p-2.5 rounded border border-border bg-canvas">
+            <span className="text-xs text-charcoal font-semibold">Bulk Converter Tool</span>
+            <button
+              type="button"
+              className="small-btn text-xs text-teal"
+              onClick={() => setShowConverter(!showConverter)}
+            >
+              <Calculator size={13} /> {showConverter ? "Hide Calculator" : "Convert kg/L to base units"}
+            </button>
+          </div>
+
+          {showConverter && (
+            <div className="p-3 rounded border border-teal/30 bg-teal-subtle space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Bulk Quantity (kg or L)">
+                  <input
+                    className="field"
+                    type="number"
+                    value={convKg}
+                    onChange={(e) => setConvKg(e.target.value)}
+                  />
+                </Field>
+                <Field label="Price per Bulk Unit (₹)">
+                  <input
+                    className="field"
+                    type="number"
+                    value={convRatePerKg}
+                    onChange={(e) => setConvRatePerKg(e.target.value)}
+                  />
+                </Field>
+              </div>
+              <button
+                type="button"
+                className="secondary-btn w-full !text-xs !bg-white"
+                onClick={applyConverter}
+              >
+                Apply ({(Number(convKg) || 0) * 1000} base units @ ₹{(Number(convRatePerKg) / 1000).toFixed(4)}/base)
+              </button>
+            </div>
+          )}
+
+          <Field label="Supplier">
+            <select
+              className="field"
+              value={supplierId}
+              onChange={(e) => setSupplierId(e.target.value)}
+              required
+            >
+              {masters?.suppliers?.map((s) => (
+                <option value={s.id} key={s.id}>{s.name} ({s.state})</option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Inventory Item">
+            <select
+              className="field"
+              value={itemId}
+              onChange={(e) => setItemId(e.target.value)}
+              required
+            >
+              {masters?.items?.filter((x) => x.type !== "finished").map((x) => (
+                <option value={x.id} key={x.id}>{x.name} ({x.unit})</option>
+              ))}
+            </select>
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={`Quantity (${selectedItem?.unit || "base unit"})`}>
+              <input
+                className="field"
+                type="number"
+                min="0.001"
+                step="0.001"
+                required
+                placeholder="e.g. 60000"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
+            </Field>
+
+            <Field label={`Unit Cost (₹ / ${selectedItem?.unit || "base"})`}>
+              <input
+                className="field"
+                type="number"
+                min="0"
+                step="0.0001"
+                required
+                placeholder="e.g. 0.045"
+                value={rate}
+                onChange={(e) => setRate(e.target.value)}
+              />
+            </Field>
+          </div>
+
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
+            <button type="button" className="secondary-btn" onClick={() => setPurchaseOpen(false)}>
+              Cancel
+            </button>
+            <button className="primary-btn" disabled={busy}>
+              {busy ? "Posting…" : "Post Receipt to Ledger"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Stock Adjustment Modal */}
+      <Modal
+        open={adjustOpen}
+        title="Commit Stock Count Adjustment"
+        subtitle="Physical count adjustments append a signed correction entry to the ledger."
+        onClose={() => setAdjustOpen(false)}
+      >
         <form onSubmit={submitAdjustment} className="space-y-4">
-          <Field label="Item">
-            <select className="field" required value={adjust.item_id}
-              onChange={(event) => setAdjust({ ...adjust, item_id: event.target.value })}>
-              <option value="">Select item…</option>
+          <Field label="Inventory Item">
+            <select
+              className="field"
+              required
+              value={adjust.item_id}
+              onChange={(e) => setAdjust({ ...adjust, item_id: e.target.value })}
+            >
+              <option value="">Select target item…</option>
               {rows.map((row) => (
-                <option key={row.item} value={masters?.items.find((entry) => entry.name === row.item)?.id}>
+                <option key={row.item} value={masters?.items.find((i) => i.name === row.item)?.id}>
                   {row.item} — {row.balance} {row.unit} on hand
                 </option>
               ))}
             </select>
           </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Quantity" hint="Negative writes off, positive adds">
-              <input className="field" type="number" step="0.001" required value={adjust.quantity}
-                onChange={(event) => setAdjust({ ...adjust, quantity: event.target.value })} />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Correction Quantity" hint="Positive to add, negative to write off">
+              <input
+                className="field"
+                type="number"
+                step="0.001"
+                required
+                placeholder="-50 or +100"
+                value={adjust.quantity}
+                onChange={(e) => setAdjust({ ...adjust, quantity: e.target.value })}
+              />
             </Field>
-            <Field label="Unit cost (₹)" hint="Required for write-on items with no history">
-              <input className="field" type="number" min="0" step="0.0001" value={adjust.unit_cost}
-                onChange={(event) => setAdjust({ ...adjust, unit_cost: event.target.value })} />
+            <Field label="Unit Cost (₹)" hint="Optional valuation override">
+              <input
+                className="field"
+                type="number"
+                min="0"
+                step="0.0001"
+                value={adjust.unit_cost}
+                onChange={(e) => setAdjust({ ...adjust, unit_cost: e.target.value })}
+              />
             </Field>
           </div>
-          <Field label="Reason">
-            <input className="field" required minLength={3} value={adjust.reason}
-              placeholder="e.g. Physical count variance, spillage"
-              onChange={(event) => setAdjust({ ...adjust, reason: event.target.value })} />
+
+          <Field label="Audit Reason">
+            <input
+              className="field"
+              required
+              minLength={3}
+              placeholder="e.g. Physical inventory variance, floor spillage"
+              value={adjust.reason}
+              onChange={(e) => setAdjust({ ...adjust, reason: e.target.value })}
+            />
           </Field>
-          <div className="flex justify-end gap-2 border-t border-slate-800 pt-4">
-            <button type="button" className="secondary-btn" onClick={() => setAdjustOpen(false)}>Cancel</button>
-            <button className="primary-btn" disabled={busy}>{busy ? "Posting…" : "Post adjustment"}</button>
+
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
+            <button type="button" className="secondary-btn" onClick={() => setAdjustOpen(false)}>
+              Cancel
+            </button>
+            <button className="primary-btn" disabled={busy}>
+              {busy ? "Posting…" : "Commit Adjustment"}
+            </button>
           </div>
         </form>
       </Modal>

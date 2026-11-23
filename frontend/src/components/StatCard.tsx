@@ -1,27 +1,44 @@
 import type { ReactNode } from "react";
 
-export default function StatCard({ label, value, hint, icon, tone = "default" }: {
+type StatCardProps = {
   label: string;
   value: string;
   hint?: string;
   icon?: ReactNode;
-  tone?: "default" | "positive" | "warning" | "danger";
-}) {
-  const toneClass = {
-    default: "text-slate-100",
-    positive: "text-emerald-400",
-    warning: "text-amber-400",
-    danger: "text-rose-400",
-  }[tone];
+  tone?: "default" | "positive" | "warning" | "danger" | "teal" | "amber";
+  trend?: {
+    value: string;
+    positive: boolean;
+    label?: string;
+  };
+};
+
+export default function StatCard({ label, value, hint, icon, tone = "default", trend }: StatCardProps) {
+  let iconBg = "kpi-icon-box";
+  if (tone === "warning" || tone === "amber") iconBg = "kpi-icon-box kpi-icon-amber";
+  else if (tone === "default") iconBg = "kpi-icon-box kpi-icon-navy";
 
   return (
-    <div className="panel !p-4 stat-card">
+    <div className="kpi-card">
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</span>
-        {icon && <span className="stat-icon">{icon}</span>}
+        <span className="kpi-label">{label}</span>
+        {icon && <span className={iconBg}>{icon}</span>}
       </div>
-      <div className={`mt-2 text-2xl font-bold tabular-nums leading-none ${toneClass}`}>{value}</div>
-      {hint && <div className="muted mt-1.5 text-[11px] leading-snug">{hint}</div>}
+
+      <div className="kpi-value">{value}</div>
+
+      <div className="flex items-center justify-between text-xs mt-1">
+        {hint && <span className="kpi-hint">{hint}</span>}
+        {trend && (
+          <span
+            className={`inline-flex items-center gap-0.5 font-bold text-[11px] px-1.5 py-0.5 rounded ${
+              trend.positive ? "bg-emerald-subtle text-emerald-dark" : "bg-crimson-subtle text-crimson-dark"
+            }`}
+          >
+            {trend.positive ? "↑" : "↓"} {trend.value}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
