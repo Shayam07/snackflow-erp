@@ -42,14 +42,14 @@ export default function Payments({ role }: { role: string }) {
   const [reference, setReference] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const isAdmin = role === "admin" || role === "owner";
+  const isAdmin = role === "admin";
 
   async function loadData() {
     setLoading(true);
     try {
       const [colData, invData, masterData] = await Promise.all([
-        api<CollectionRow[]>("/api/reports/collections"),
-        api<any[]>("/api/reports/sales"),
+        api<CollectionRow[]>("/api/payments"),
+        api<any[]>("/api/invoices"),
         api<any>("/api/masters"),
       ]);
 

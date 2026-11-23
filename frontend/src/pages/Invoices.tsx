@@ -52,12 +52,12 @@ export default function Invoices({ role }: { role: string }) {
   const [restockGoods, setRestockGoods] = useState(false);
   const [submittingCredit, setSubmittingCredit] = useState(false);
 
-  const isAdmin = role === "admin" || role === "owner";
+  const isAdmin = role === "admin";
 
   async function loadInvoices() {
     setLoading(true);
     try {
-      const data = await api<InvoiceRow[]>("/api/reports/sales");
+      const data = await api<InvoiceRow[]>("/api/invoices");
       setInvoices(data);
     } catch (err: any) {
       toast.error(err.message || "Failed to load invoices");

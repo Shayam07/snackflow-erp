@@ -65,7 +65,7 @@ export default function Orders({ role }: { role: string }) {
   // Salesman territory history
   const [salesHistory, setSalesHistory] = useState<any[]>([]);
 
-  const isAdmin = role === "admin" || role === "owner";
+  const isAdmin = role === "admin";
   const canCreate = role === "salesman" || role === "admin";
 
   async function loadData() {
@@ -293,10 +293,10 @@ export default function Orders({ role }: { role: string }) {
 
     setSubmittingPayment(true);
     try {
-      // Find invoice for this order or use order id
-      const invoiceData = await api<any[]>(`/api/reports/sales`);
-      const inv = invoiceData.find((r) => r.order_id === paymentModalOrder.id || r.invoice_number?.includes(String(paymentModalOrder.id)));
-      const invoiceId = inv?.id || paymentModalOrder.id;
+      const invoiceData = await api<any[]>("/api/invoices");
+      const inv = invoiceData.find((r) => r.order_id === paymentModalOrder.id);
+      if (!inv) throw new Error("No tax invoice found for this order yet");
+      const invoiceId = inv.id;
 
       await api("/api/payments", {
         method: "POST",

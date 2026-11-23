@@ -351,6 +351,72 @@ def record_payment(data: PaymentInput, db: Session = Depends(get_db),
             "outstanding": str(Decimal(invoice.total) - prior - data.amount)}
 
 
+@router.get("/api/invoices")
+def list_invoices(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Invoice register with customer, tax, settled and outstanding amounts."""
+    rows = db.execute(
+        select(Invoice, Customer.name, Customer.state)
+        .join(Order, Order.id == Invoice.order_id)
+        .join(Customer, Customer.id == Order.customer_id)
+        .order_by(Invoice.invoice_date.desc(), Invoice.id.desc())
+    ).all()
+    allocated = dict(db.execute(
+        select(PaymentAllocation.invoice_id, func.sum(PaymentAllocation.amount))
+        .group_by(PaymentAllocation.invoice_id)
+    ).all())
+    credited = dict(db.execute(
+        select(CreditNote.invoice_id, func.sum(CreditNote.amount))
+        .group_by(CreditNote.invoice_id)
+    ).all())
+    result = []
+    for invoice, customer_name, customer_state in rows:
+        paid = Decimal(str(allocated.get(invoice.id) or 0))
+        credited_amount = Decimal(str(credited.get(invoice.id) or 0))
+        result.append({
+            "id": invoice.id,
+            "order_id": invoice.order_id,
+            "invoice_number": invoice.invoice_number,
+            "invoice_date": str(invoice.invoice_date),
+            "customer": customer_name,
+            "state": customer_state,
+            "place_of_supply": invoice.place_of_supply,
+            "gst_type": invoice.gst_type,
+            "taxable": str(invoice.taxable_value),
+            "cgst": str(invoice.cgst),
+            "sgst": str(invoice.sgst),
+            "igst": str(invoice.igst),
+            "total": str(invoice.total),
+            "paid": str(paid),
+            "credited": str(credited_amount),
+            "outstanding": str(money(Decimal(invoice.total) - paid - credited_amount)),
+        })
+    return result
+
+
+@router.get("/api/payments")
+def list_payments(db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)):
+    """Customer receipts allocated against invoices."""
+    rows = db.execute(
+        select(Payment, PaymentAllocation, Invoice, Customer.name)
+        .join(PaymentAllocation, PaymentAllocation.payment_id == Payment.id)
+        .join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
+        .join(Customer, Customer.id == Payment.customer_id)
+        .order_by(Payment.received_at.desc(), Payment.id.desc())
+    ).all()
+    return [{
+        "payment_id": payment.id,
+        "payment_date": payment.received_at.strftime("%Y-%m-%d"),
+        "customer": customer_name,
+        "amount": str(allocation.amount),
+        "reference": payment.reference,
+        "invoice_id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "invoice_date": str(invoice.invoice_date),
+        "invoice_total": str(invoice.total),
+    } for payment, allocation, invoice, customer_name in rows]
+
+
 @router.get("/api/sales/my-sales")
 def salesman_sales(db: Session = Depends(get_db),
                    user: User = Depends(require_roles("salesman"))):
